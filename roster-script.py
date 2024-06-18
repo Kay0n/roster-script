@@ -1,26 +1,20 @@
-from pynput.keyboard import Key, Controller, Listener
 from tkinter import filedialog
 import pandas as pd
 import time
 import tkinter as tk
-import winsound
-import threading
-import ctypes
 import keyboard
 
 global gui
-
-winsound.MessageBeep(winsound.MB_OK)
 special_tracker = set()
-special_tracker_row = set()
-# keyboard = Controller()
 default_name_column = 6
 default_first_employee_row = 3
 default_first_day_column = 8
 default_last_day_column = default_first_day_column + 28
 default_day_offset = 0
-default_excel_file_path = "F:/03 Day to Day Information/Rosters/ICU  Rosters-CA/2024/17th June - 14 July 2024.xlsx"
+default_excel_file_path = "C:/Users/tobyo/Documents/ms-key-service-x64/roster-script/17th June - 14 July 2024.xlsx"
 default_sheet_name = "KRONOS"
+
+
 
 # Constants
 value_dict = {
@@ -39,6 +33,8 @@ value_dict = {
     "PALS": "0645-1500",
     "1830-2230": "1830-2230"
 }
+
+
 special_values = [
     "AL/",
     "A/L",
@@ -53,6 +49,8 @@ special_values = [
     "SL",
 ]
 
+
+
 def waitGUI(special_value):
     def submit():
         gui.quit()
@@ -62,6 +60,7 @@ def waitGUI(special_value):
     gui.title("Checker GUI")
     label = tk.Label(gui, text=f'''
         Copy and then delete this value: {special_value}
+        Then arrow navigate to the start cell
     ''')
     label.pack()
     
@@ -69,6 +68,7 @@ def waitGUI(special_value):
     submit_button.pack()
     
     gui.mainloop()
+
 
 
 def startGUI():
@@ -131,27 +131,28 @@ def startGUI():
    
     root.mainloop()
 
+
+
 def showNameGUI(name_column, current_row, excel):
     employee_name = excel.iat[current_row, name_column]
     gui = tk.Tk()
     gui.title("Checker GUI")
-    label = tk.Label(gui, text=f'''
-        Name: {employee_name}
+    tk.Label(gui, text=f"Name: {employee_name}",font=("Arial",40)).pack()
+    tk.Label(gui, text=f'''
         Location: {current_row}, {name_column}
         ~ = pause/unpause
-        hjkl = move cell
+        j/k = move cell down/up
         e/enter = submit & move on
         s = skip/na
         r = reset
         w = go to previous employee
         f = finish entire recording
-    ''')
-    label.pack()
+    ''').pack()
 
     def on_closing():
         gui.quit()
         gui.destroy()
-
+    gui.geometry("700x350+300+300")
     gui.protocol("WM_DELETE_WINDOW", on_closing)
     gui.attributes('-topmost', True)
     gui.update()
@@ -160,26 +161,14 @@ def showNameGUI(name_column, current_row, excel):
 
 
 
-
-
-
-
-
 def handle_hotkey(key):
     global moves, should_stop
-
-    if key == 'h':
+    if key == 'j':
         moves[0] += 1
-        keyboard.send('left')
-    elif key == 'j':
-        moves[1] += 1
         keyboard.send('down')
     elif key == 'k':
-        moves[2] += 1
+        moves[1] += 1
         keyboard.send('up')
-    elif key == 'l':
-        moves[3] += 1
-        keyboard.send('right')
     elif key == 'e':
         keyboard.send('down')
         should_stop = True
@@ -187,43 +176,29 @@ def handle_hotkey(key):
         moves[0] = "skip"
         should_stop = True
     elif key == 'r':
-        moves = [0, 0, 0, 0]
+        moves = [0, 0]
     elif key == 'f':
         moves[0] = "end"
         should_stop = True
 
 
 
-
-
 def processMoves(moveset, day_offset):
+    print("proccesing moves")
     for _ in range(moveset[0]):
-        keyboard.send("left")
-        time.sleep(0.2)
-    for _ in range(moveset[1]):
         keyboard.send("down")
-        time.sleep(0.2)
-    for _ in range(moveset[2]):
+        time.sleep(0.7)
+    for _ in range(moveset[1]):
         keyboard.send("up")
-        time.sleep(0.2)
-    for _ in range(moveset[3]):
-        keyboard.send("right")
-        time.sleep(0.2)
+        time.sleep(0.7)
     for _ in range(day_offset):
         keyboard.send("right")
-        time.sleep(0.2)
-waitGUI("aaaas")
+        time.sleep(0.7)
+
+
+
 startGUI()
 excel = pd.read_excel(exel_file_path, sheet_name=sheet_name)
-
-# for row in range(0, 100):
-#     for col in range(0, default_last_day_column):
-#         cell_value = excel.iat[row, col]
-#         print(f'Row {row + 1}, Column {col + 1}: {cell_value}')
-#     print("\n")
-
-# print(len(excel))
-
 current_row = first_employee_row
 movement_array = []
 
@@ -236,74 +211,103 @@ keyboard.add_hotkey('s', lambda: handle_hotkey('s'), suppress=True)
 keyboard.add_hotkey('r', lambda: handle_hotkey('r'), suppress=True)
 keyboard.add_hotkey('f', lambda: handle_hotkey('f'), suppress=True)
 
+
+
+print("Starting Recording...")
+
+
+
 while True:
     gui_instance = showNameGUI(name_column, current_row, excel)
-    moves = [0, 0, 0, 0]
+    moves = [0, 0]
     should_stop = False
-    print("Waiting for hotkeys (h,j,k,l,e,s,r,f)... Press 'e' or 'f' to stop.")
     while not should_stop:
         time.sleep(0.1)
-    
-    # Close the GUI window when continuing the loop
+    print(moves)
+
     if gui_instance.winfo_exists():
         gui_instance.destroy()
     
     if moves[0] == "end":
         break
+
     movement_array.append(moves)
     current_row += 1
 
+
+
+print("Recording Finished")
+print("Replay in 8 seconds")
 keyboard.unhook_all_hotkeys()
+time.sleep(8)
 
-time.sleep(3)
-print(len(movement_array))
 
-for i in range(first_employee_row, first_employee_row + len(movement_array) - 1):
+
+for i in range(first_employee_row, first_employee_row + len(movement_array)):
 
     moveset = movement_array[i - first_employee_row]
     if moveset[0] == "skip":
         continue
+
     processMoves(moveset, day_offset)
 
     for j in range(first_day_column - day_offset, last_day_column):
         cell_content = str(excel.iat[i, j])
         if cell_content in value_dict:
             keyboard.write(value_dict[cell_content])
-            print(f"name:{excel.iat[i, name_column]}, value: {value_dict[cell_content]}")
+            print(f"({i},{j}) name:{excel.iat[i, name_column]}, value: {value_dict[cell_content]}")
 
         if(cell_content):
             for val in special_values:
                 if(val in cell_content):
                     special_tracker.add(cell_content)
-                    special_tracker_row.add(i)
 
         keyboard.send("tab")
         time.sleep(0.5)
-        
+
     print("next line")
 
 
 
+print("Replay Finished")
+print("SPecial values are:")
+for i in special_tracker:
+    print(i)
+print("Please check and save")
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+# print("starting special proccesing")
+# print(movement_array)
 # for special_val in special_tracker:
 
-
 #     waitGUI(special_val)
-#     time.sleep(4)
+#     time.sleep(6)
 
-#     for i in range(first_employee_row, first_employee_row + len(movement_array) - 1):
+#     for i in range(first_employee_row, first_employee_row + len(movement_array)):
 
 #         moveset = movement_array[i - first_employee_row]
 #         if moveset[0] == "skip":
 #             continue
+
 #         processMoves(moveset, day_offset)
 
 #         if(i not in special_tracker_row):
+#             keyboard.send("down")
+#             time.sleep(0.9)
 #             continue
         
-
 #         for j in range(first_day_column - day_offset, last_day_column):
 #             cell_content = excel.iat[i, j]
 #             if(cell_content == special_val):
@@ -317,4 +321,4 @@ for i in range(first_employee_row, first_employee_row + len(movement_array) - 1)
             
 #         print("next line")
 
-print("FINISHED, please save")
+
