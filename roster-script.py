@@ -256,7 +256,12 @@ for i in range(first_employee_row, first_employee_row + len(movement_array)):
 
     processMoves(moveset, day_offset)
 
-    for j in range(first_day_column + day_offset, last_day_column):
+    for j in range(first_day_column, last_day_column):
+        if(j <= first_day_column + day_offset):
+            keyboard.send("tab")
+            time.sleep(0.5)
+            continue
+
         cell_content = str(excel.iat[i, j])
         if cell_content in value_dict:
             keyboard.write(value_dict[cell_content])
