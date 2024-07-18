@@ -29,9 +29,11 @@ value_dict = {
     "7.6": "0645-1535",
     "SKILLS": "1000-1400",
     "CALS": "0645-1500",
-    "ALS": "0645-1500",
+    "ALS": "0645-1500",     
+    "ALS/7.5": "0645-1500", 
     "PALS": "0645-1500",
-    "1830-2230": "1830-2230"
+    "1830-2230": "1830-2230",
+    "1430-1900": "1430-1900",
 }
 
 
@@ -41,12 +43,14 @@ special_values = [
     "M/L",
     "ML",
     "MLUP",
+    "UPML",
     "PHNW",
     "RPH",
     "STUDY",
     "LSL",
     "SD",
     "SL",
+    "ORIENT",
 ]
 
 
@@ -136,7 +140,7 @@ def startGUI():
 def showNameGUI(name_column, current_row, excel):
     employee_name = excel.iat[current_row, name_column]
     gui = tk.Tk()
-    gui.title("Checker GUI")
+    gui.title("Name GUI")
     tk.Label(gui, text=f"Name: {employee_name}",font=("Arial",40)).pack()
     tk.Label(gui, text=f'''
         Location: {current_row}, {name_column}
@@ -152,12 +156,23 @@ def showNameGUI(name_column, current_row, excel):
     def on_closing():
         gui.quit()
         gui.destroy()
-    gui.geometry("700x350+300+300")
+    gui.geometry("500x300+100+100") # 1080p screen
     gui.protocol("WM_DELETE_WINDOW", on_closing)
     gui.attributes('-topmost', True)
     gui.update()
 
     return gui
+
+
+def enable_hotkeys():
+    keyboard.add_hotkey('h', lambda: handle_hotkey('h'), suppress=True)
+    keyboard.add_hotkey('j', lambda: handle_hotkey('j'), suppress=True)
+    keyboard.add_hotkey('k', lambda: handle_hotkey('k'), suppress=True)
+    keyboard.add_hotkey('l', lambda: handle_hotkey('l'), suppress=True)
+    keyboard.add_hotkey('e', lambda: handle_hotkey('e'), suppress=True)
+    keyboard.add_hotkey('s', lambda: handle_hotkey('s'), suppress=True)
+    keyboard.add_hotkey('r', lambda: handle_hotkey('r'), suppress=True)
+    keyboard.add_hotkey('f', lambda: handle_hotkey('f'), suppress=True)
 
 
 
@@ -196,22 +211,12 @@ def processMoves(moveset, day_offset):
         time.sleep(0.7)
 
 
+movement_array = []
 
 startGUI()
 excel = pd.read_excel(exel_file_path, sheet_name=sheet_name)
 current_row = first_employee_row
-movement_array = []
-
-keyboard.add_hotkey('h', lambda: handle_hotkey('h'), suppress=True)
-keyboard.add_hotkey('j', lambda: handle_hotkey('j'), suppress=True)
-keyboard.add_hotkey('k', lambda: handle_hotkey('k'), suppress=True)
-keyboard.add_hotkey('l', lambda: handle_hotkey('l'), suppress=True)
-keyboard.add_hotkey('e', lambda: handle_hotkey('e'), suppress=True)
-keyboard.add_hotkey('s', lambda: handle_hotkey('s'), suppress=True)
-keyboard.add_hotkey('r', lambda: handle_hotkey('r'), suppress=True)
-keyboard.add_hotkey('f', lambda: handle_hotkey('f'), suppress=True)
-
-
+enable_hotkeys()
 
 print("Starting Recording...")
 
@@ -251,7 +256,7 @@ for i in range(first_employee_row, first_employee_row + len(movement_array)):
 
     processMoves(moveset, day_offset)
 
-    for j in range(first_day_column - day_offset, last_day_column):
+    for j in range(first_day_column + day_offset, last_day_column):
         cell_content = str(excel.iat[i, j])
         if cell_content in value_dict:
             keyboard.write(value_dict[cell_content])
@@ -320,5 +325,3 @@ print("Please check and save")
 #                 time.sleep(0.5)
             
 #         print("next line")
-
-
