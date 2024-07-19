@@ -206,9 +206,7 @@ def processMoves(moveset, day_offset):
     for _ in range(moveset[1]):
         keyboard.send("up")
         time.sleep(0.7)
-    for _ in range(day_offset):
-        keyboard.send("right")
-        time.sleep(0.7)
+
 
 
 movement_array = []
