@@ -3,12 +3,13 @@ import time
 import keyboard
 from keyboard_manager import KeyboardManager
 from gui_manager import GUIManager
+from excel_manager import ExcelWorkbook
 from config import Config
 
 class RosterProcessor:
-    def __init__(self, config_data, excel, gui_manager, keyboard_manager):
+    def __init__(self, config_data, excel_workbook, gui_manager, keyboard_manager):
         self.config_data = config_data
-        self.excel = excel
+        self.workbook: ExcelWorkbook = excel_workbook
         self.gui_manager: GUIManager = gui_manager
         self.keyboard_manager: KeyboardManager = keyboard_manager
         self.config: Config = Config()
@@ -22,17 +23,20 @@ class RosterProcessor:
 
         while True:
             gui_instance = self.gui_manager.show_name_gui(
-                self.excel.iat[current_row, self.config_data['name_column']],
+                self.workbook.get_cell(current_row, self.config_data['name_column']),
                 current_row,
                 self.config_data['name_column']
             )
 
             self.keyboard_manager.moves = 0
+            prev_moves = 0
             self.keyboard_manager.should_stop = False
             
             while not self.keyboard_manager.should_stop:
                 time.sleep(0.05)
-                gui_instance.update_moves(self.keyboard_manager.moves)
+                if self.keyboard_manager.moves != prev_moves:
+                    gui_instance.update_moves(self.keyboard_manager.moves)
+                    prev_moves = self.keyboard_manager.moves
             
             moves = self.keyboard_manager.moves
             print(moves)
@@ -66,19 +70,22 @@ class RosterProcessor:
 
             self.keyboard_manager.simulate_moves(moves)
 
-            for j in range(self.config_data['first_day_column'],
-                         self.config_data['last_day_column']):
+            for j in range(self.config_data['first_day_column'], self.config_data['last_day_column']):
                 
                 if j <= self.config_data['first_day_column'] + self.config_data['day_offset']:
                     keyboard.send("tab")
                     time.sleep(0.5)
                     continue
 
-                cell_content = str(self.excel.iat[i, j])
+                cell_content = self.workbook.get_cell(i, j)
                 if cell_content in self.config.VALUE_DICT:
                     keyboard.write(self.config.VALUE_DICT[cell_content])
-                    print(f"({i},{j}) name:{self.excel.iat[i, self.config_data['name_column']]}, "
-                          f"value: {self.config.VALUE_DICT[cell_content]}")
+                    # DEBUG
+                    print(f"""
+                        name:{self.excel.iat[i, self.config_data['name_column']]}
+                        index: {i},{j}
+                        value: {self.config.VALUE_DICT[cell_content]}
+                    """)
 
                 if cell_content:
                     for val in self.config.SPECIAL_VALUES:

@@ -3,7 +3,7 @@ from config import Config
 from gui_manager import GUIManager
 from roster_processor import RosterProcessor
 from keyboard_manager import KeyboardManager
-import pandas as pd
+from excel_manager import ExcelWorkbook
 import time
 
 def main():
@@ -13,9 +13,10 @@ def main():
     
     config_data = gui_manager.show_start_gui()
     
-    excel = pd.read_excel(config_data['excel_file_path'], sheet_name=config_data['sheet_name'])
+    workbook: ExcelWorkbook = ExcelWorkbook(config_data['excel_file_path'], config_data['sheet_name'])
+    # excel = pd.read_excel(config_data['excel_file_path'], sheet_name=config_data['sheet_name'])
     
-    processor = RosterProcessor(config_data, excel, gui_manager, keyboard_manager)
+    processor = RosterProcessor(config_data, workbook, gui_manager, keyboard_manager)
     
     print("Starting Recording...")
     recorded_moves = processor.record_movements()
