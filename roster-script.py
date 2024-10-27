@@ -15,8 +15,6 @@ default_excel_file_path = "C:/Users/tobyo/Documents/ms-key-service-x64/roster-sc
 default_sheet_name = "KRONOS"
 
 
-
-# Constants
 value_dict = {
     "AM": "0645-1900",
     "PM": "1845-0700",
@@ -295,36 +293,3 @@ print("Please check and save")
 
 
 
-
-# print("starting special proccesing")
-# print(movement_array)
-# for special_val in special_tracker:
-
-#     waitGUI(special_val)
-#     time.sleep(6)
-
-#     for i in range(first_employee_row, first_employee_row + len(movement_array)):
-
-#         moveset = movement_array[i - first_employee_row]
-#         if moveset[0] == "skip":
-#             continue
-
-#         processMoves(moveset, day_offset)
-
-#         if(i not in special_tracker_row):
-#             keyboard.send("down")
-#             time.sleep(0.9)
-#             continue
-        
-#         for j in range(first_day_column - day_offset, last_day_column):
-#             cell_content = excel.iat[i, j]
-#             if(cell_content == special_val):
-#                 keyboard.send('ctrl+v')
-#                 print(f"name:{excel.iat[i, name_column]}, value: copypaste")
-#                 keyboard.send("tab")
-#                 time.sleep(1.5)
-#             else:
-#                 keyboard.send("tab")
-#                 time.sleep(0.5)
-            
-#         print("next line")
