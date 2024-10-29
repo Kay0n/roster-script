@@ -1,7 +1,7 @@
 import time
 import os
 from datetime import date
-from dotenv import load_dotenv
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
@@ -61,7 +61,7 @@ class RosterSelenium():
 	def select_schedule_hyperfind(self):
 		self.driver.find_element(By.XPATH, "//li[5]/div/div/span[2]").click()
 		self.driver.switch_to.frame(1)
-		time.sleep(8) # stops page hang
+		time.sleep(6) # stops page hang
 		self.js_click((By.ID, "hyperfindIcon"))
 		self.js_click((By.XPATH, "//section[2]/header/a/span"))
 		self.js_click((By.LINK_TEXT, "CAH-C9430-ICU"))
@@ -86,7 +86,7 @@ class RosterSelenium():
 				scrollable_container = WebDriverWait(self.driver, 10).until(
 					condition.presence_of_element_located((By.ID, "tableview-1022"))
 				)
-				
+				print("PASSED FIND SCROLLABLE")
 				all_names = set()
 				scroll_position = 0
 				scroll_increment = 600  
@@ -96,6 +96,7 @@ class RosterSelenium():
 				
 				while True:
 					elements = self.driver.find_elements('xpath', "//*[starts-with(@id, 'employeeId_')]")
+					print("PASSED EMPID")
 					current_names = {element.text.strip() for element in elements if element.text.strip()}
 					
 					all_names.update(current_names)
@@ -114,12 +115,13 @@ class RosterSelenium():
 							let element = arguments[0];
 							element.scrollTop = arguments[1];
 					""", scrollable_container, scroll_position)
-					
+					print("PASSED scroll")
 					time.sleep(scroll_delay_seconds)  
 					
 					current_scroll_amount = self.driver.execute_script("return arguments[0].scrollTop;", scrollable_container)
 					total_scroll_height = self.driver.execute_script("return arguments[0].scrollHeight;", scrollable_container)
 					visible_height = self.driver.execute_script("return arguments[0].clientHeight;", scrollable_container)
+					print("PASSED GET DATA")
 					
 					if current_scroll_amount >= (total_scroll_height - visible_height) and no_new_names_count > 0:
 						break
@@ -127,10 +129,75 @@ class RosterSelenium():
 				return sorted(list(all_names))  
 		
 		except Exception as e:
-			print(f"Error while scrolling: {str(e)}")
+			print(f"Error while scrolling...")
 			raise e
 				
 
+	def find_scrollable_container(self):
+		"""
+		Finds potential scrollable containers that contain employee elements.
+		Returns a list of containers with their XPaths and properties.
+		"""
+		
+		# First find one of the employee elements as a reference point
+		employee_elem = self.driver.find_element('xpath', "//*[starts-with(@id, 'employeeId_')]")
+		
+		# Get all ancestor elements
+		script = """
+		function getScrollableAncestors(element) {
+			let ancestors = [];
+			let current = element;
+			while (current.parentElement) {
+				current = current.parentElement;
+				
+				// Get computed style
+				let style = window.getComputedStyle(current);
+				
+				// Check if element is scrollable
+				let isScrollable = (
+					(style.overflowY === 'scroll' || style.overflowY === 'auto') &&
+					current.scrollHeight > current.clientHeight
+				);
+				
+				if (isScrollable) {
+					ancestors.push({
+						tag: current.tagName,
+						id: current.id,
+						class: current.className,
+						height: current.scrollHeight,
+						clientHeight: current.clientHeight,
+						overflow: style.overflowY
+					});
+				}
+			}
+			return ancestors;
+		}
+		return getScrollableAncestors(arguments[0]);
+		"""
+		
+		scrollable_elements = self.driver.execute_script(script, employee_elem)
+		
+		# Print information about each scrollable container
+		print("\nPotential scrollable containers found:")
+		for idx, elem in enumerate(scrollable_elements, 1):
+			print(f"\nContainer #{idx}:")
+			print(f"Tag: {elem['tag'].lower()}")
+			print(f"ID: {elem['id']}")
+			print(f"Class: {elem['class']}")
+			print(f"Total Height: {elem['height']}px")
+			print(f"Visible Height: {elem['clientHeight']}px")
+			print(f"Overflow-Y: {elem['overflow']}")
+			
+			# Generate XPath for this container
+			xpath = f"//{elem['tag'].lower()}"
+			if elem['id']:
+				xpath += f"[@id='{elem['id']}']"
+			elif elem['class']:
+				xpath += f"[contains(@class, '{elem['class'].split()[0]}')]"
+				
+			print(f"XPath: {xpath}")
+		
+		return scrollable_elements
 
 
 
@@ -207,18 +274,7 @@ class RosterSelenium():
 
 
 
-load_dotenv()
-workbook: ExcelWorkbook = ExcelWorkbook("", "ICU-HDU")
-tester = RosterSelenium()
-user = os.getenv("KRONOS_USERNAME")
-password = os.getenv("KRONOS_PASSWORD")
 
-tester.setup_driver()
-tester.login(user, password)
-tester.select_schedule_hyperfind()
-tester.select_date(date(2024, 11, 4), date(2024, 12, 1))
-employee_list = tester.get_all_employee_names()
-moves = tester.generate_moves(workbook, employee_list)
 
 
 

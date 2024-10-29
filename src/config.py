@@ -25,12 +25,13 @@ class Config:
             "PHNW", "RPH", "STUDY", "LSL", "SD", "SL", "ORIENT",
         ]
 
-        self.DEFAULTS = {
-            'name_column': 6,
+        self.ICU_DEFAULTS = {
+            'name_col': 6,
+            'kronos_name_col': 37,
             'first_employee_row': 3,
-            'first_day_column': 8,
-            'last_day_column': 36,  # first_day_column + 28
+            'first_day_col': 8,
+            'last_day_col': 36,  # first_day_col + 28
             'day_offset': 0,
-            'excel_file_path': "C:/Users/tobyo/Documents/ms-key-service-x64/roster-script/17th June - 14 July 2024.xlsx",
-            'sheet_name': "KRONOS"
+            'excel_file_path': "",
+            "sheet_name": "ICU-HDU",
         }

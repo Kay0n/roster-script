@@ -9,13 +9,8 @@ class GUIManager:
         def submit():
             nonlocal config_data
             config_data = {
-                'name_column': int(name_col_entry.get()) - 1,
-                'first_employee_row': int(first_row_entry.get()) - 2,
-                'first_day_column': int(first_day_col_entry.get()) - 1,
-                'last_day_column': int(last_day_col_entry.get()) - 1,
                 'day_offset': int(day_offset_entry.get()),
                 'excel_file_path': file_path_entry.get(),
-                'sheet_name': sheet_name_entry.get()
             }
             root.quit()
             root.destroy()
@@ -30,10 +25,7 @@ class GUIManager:
         config_data = None
 
         # Create and arrange GUI elements
-        labels = [
-            "Employee Name Column:", "First Employee Row:", "First Day Column:",
-            "Last Day Column:", "Day Offset:", "Excel File Path:", "Sheet Name:"
-        ]
+        labels = ["Day Offset:", "Excel File Path:"]
         
         entries = []
         for i, label in enumerate(labels):
@@ -42,21 +34,14 @@ class GUIManager:
             entry.grid(row=i, column=1)
             entries.append(entry)
 
-        [name_col_entry, first_row_entry, first_day_col_entry,
-         last_day_col_entry, day_offset_entry, file_path_entry,
-         sheet_name_entry] = entries
+        [day_offset_entry, file_path_entry] = entries
 
         from config import Config
-        defaults = Config().DEFAULTS
+        defaults = Config().ICU_DEFAULTS
 
-        # prepopulate fields
-        name_col_entry.insert(0, defaults['name_column'])
-        first_row_entry.insert(0, defaults['first_employee_row'])
-        first_day_col_entry.insert(0, defaults['first_day_column'])
-        last_day_col_entry.insert(0, defaults['last_day_column'])
+        
         day_offset_entry.insert(0, defaults['day_offset'])
         file_path_entry.insert(0, defaults['excel_file_path'])
-        sheet_name_entry.insert(0, defaults['sheet_name'])
 
         tk.Button(root, text='Select File', command=select_file).grid(row=5, column=2)
         tk.Button(root, text='Submit', command=submit).grid(row=7, column=1, pady=4)
