@@ -96,7 +96,6 @@ class RosterSelenium():
 				
 				while True:
 					elements = self.driver.find_elements('xpath', "//*[starts-with(@id, 'employeeId_')]")
-					print("PASSED EMPID")
 					current_names = {element.text.strip() for element in elements if element.text.strip()}
 					
 					all_names.update(current_names)
@@ -115,89 +114,26 @@ class RosterSelenium():
 							let element = arguments[0];
 							element.scrollTop = arguments[1];
 					""", scrollable_container, scroll_position)
-					print("PASSED scroll")
 					time.sleep(scroll_delay_seconds)  
 					
 					current_scroll_amount = self.driver.execute_script("return arguments[0].scrollTop;", scrollable_container)
 					total_scroll_height = self.driver.execute_script("return arguments[0].scrollHeight;", scrollable_container)
 					visible_height = self.driver.execute_script("return arguments[0].clientHeight;", scrollable_container)
-					print("PASSED GET DATA")
 					
 					if current_scroll_amount >= (total_scroll_height - visible_height) and no_new_names_count > 0:
 						break
+				
+				# remove "\nSigned off period" from each name if applicable
+				cleaned_names = [name.replace('\nSigned off period', '') for name in all_names]
 
-				return sorted(list(all_names))  
+				return sorted(list(cleaned_names))  
 		
 		except Exception as e:
 			print(f"Error while scrolling...")
 			raise e
 				
 
-	def find_scrollable_container(self):
-		"""
-		Finds potential scrollable containers that contain employee elements.
-		Returns a list of containers with their XPaths and properties.
-		"""
-		
-		# First find one of the employee elements as a reference point
-		employee_elem = self.driver.find_element('xpath', "//*[starts-with(@id, 'employeeId_')]")
-		
-		# Get all ancestor elements
-		script = """
-		function getScrollableAncestors(element) {
-			let ancestors = [];
-			let current = element;
-			while (current.parentElement) {
-				current = current.parentElement;
-				
-				// Get computed style
-				let style = window.getComputedStyle(current);
-				
-				// Check if element is scrollable
-				let isScrollable = (
-					(style.overflowY === 'scroll' || style.overflowY === 'auto') &&
-					current.scrollHeight > current.clientHeight
-				);
-				
-				if (isScrollable) {
-					ancestors.push({
-						tag: current.tagName,
-						id: current.id,
-						class: current.className,
-						height: current.scrollHeight,
-						clientHeight: current.clientHeight,
-						overflow: style.overflowY
-					});
-				}
-			}
-			return ancestors;
-		}
-		return getScrollableAncestors(arguments[0]);
-		"""
-		
-		scrollable_elements = self.driver.execute_script(script, employee_elem)
-		
-		# Print information about each scrollable container
-		print("\nPotential scrollable containers found:")
-		for idx, elem in enumerate(scrollable_elements, 1):
-			print(f"\nContainer #{idx}:")
-			print(f"Tag: {elem['tag'].lower()}")
-			print(f"ID: {elem['id']}")
-			print(f"Class: {elem['class']}")
-			print(f"Total Height: {elem['height']}px")
-			print(f"Visible Height: {elem['clientHeight']}px")
-			print(f"Overflow-Y: {elem['overflow']}")
-			
-			# Generate XPath for this container
-			xpath = f"//{elem['tag'].lower()}"
-			if elem['id']:
-				xpath += f"[@id='{elem['id']}']"
-			elif elem['class']:
-				xpath += f"[contains(@class, '{elem['class'].split()[0]}')]"
-				
-			print(f"XPath: {xpath}")
-		
-		return scrollable_elements
+	
 
 
 
@@ -228,14 +164,17 @@ class RosterSelenium():
 					if cell_color_theme == highlight_theme:
 						names_with_rows.append((name, row))
 
-					if name == "END":
+					if name == "END": # TODO: better solution 
+						break
+
+					if row >= 140:
 						break
 
 					row += 1
 						
 				return names_with_rows
 		
-		def calculate_movements(names_with_rows, kronos_list) -> list[(int,int|str)]:
+		def calculate_movements(names_with_rows: list[(str, int)], kronos_list) -> list[(int,int|str)]:
 			"""Calculate relative movements between valid names in the Kronos list."""
 			movements = []
 			prev_kronos_index = -1
@@ -245,11 +184,11 @@ class RosterSelenium():
 					current_kronos_index = kronos_list.index(name)
 					
 					# First valid name found
-					if prev_kronos_index == -1:
-						movements.append((row,0))
+					if prev_kronos_index == -1: 
+						movements.append((row,0)) # TODO: wont work if first name in excel isn't first name in kronos
 					else:
 						# Calculate relative movement from previous position
-						movement = current_kronos_index - prev_kronos_index
+						movement = current_kronos_index - prev_kronos_index - 1
 						movements.append((row,movement))
 					
 					prev_kronos_index = current_kronos_index

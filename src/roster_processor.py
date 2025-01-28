@@ -1,28 +1,18 @@
 # roster_processor.py
 import time
-import keyboard
 from keyboard_manager import KeyboardManager
 from gui_manager import GUIManager
 from excel_manager import ExcelWorkbook
 from config import Config
-import pynput
-from pynput.keyboard import Key
 
 
-def simulate_moves(self, moveset):
-    print("processing moves")
-    direction = Key.down if moveset > 0 else Key.up
-    for _ in range(abs(moveset)):
-        self.keyboard.press(direction)
-        self.keyboard.release(direction)
-        time.sleep(self.process_delay)
 
 class RosterProcessor:
     def __init__(self, gui_data, excel_settings, excel_workbook, gui_manager, keyboard_manager):
         self.gui_data = gui_data
         self.workbook: ExcelWorkbook = excel_workbook
         self.gui_manager: GUIManager = gui_manager
-        self.keyboard_manager: KeyboardManager = keyboard_manager
+        self.keyboard: KeyboardManager = keyboard_manager
         self.config: Config = Config()
         self.excel_settings = excel_settings
 
@@ -31,7 +21,7 @@ class RosterProcessor:
     def record_movements(self) -> list[int | str]:
         movement_array = []
         current_row = self.excel_settings['first_employee_row']
-        self.keyboard_manager.enable_hotkeys()
+        self.keyboard.enable_hotkeys()
 
         while True:
             gui_instance = self.gui_manager.show_name_gui(
@@ -40,17 +30,17 @@ class RosterProcessor:
                 self.excel_settings['name_col']
             )
 
-            self.keyboard_manager.moves = 0
+            self.keyboard.moves = 0
             prev_moves = 0
-            self.keyboard_manager.should_stop = False
+            self.keyboard.should_stop = False
             
-            while not self.keyboard_manager.should_stop:
+            while not self.keyboard.should_stop:
                 time.sleep(0.05)
-                if self.keyboard_manager.moves != prev_moves:
+                if self.keyboard.moves != prev_moves:
                     gui_instance.update_moves(self.keyboard_manager.moves)
-                    prev_moves = self.keyboard_manager.moves
+                    prev_moves = self.keyboard.moves
             
-            moves = self.keyboard_manager.moves
+            moves = self.keyboard.moves
             print(moves)
 
             if gui_instance.winfo_exists():
@@ -70,81 +60,52 @@ class RosterProcessor:
     
     def proccess_selenium_roster(self, movement_array) -> set:
         special_tracker = set()
+        tab_delay = 0.6
+
+        day_offset = self.excel_settings['first_day_col'] + self.gui_data['day_offset']
+        if day_offset > 22: day_offset += 1
+
 
         for row, move in movement_array:
             if move == "skip":
                 continue
 
-            simulate_moves(move)
+            self.keyboard.simulate_moves(move)
 
-            for col in range(self.excel_settings['first_day_col'], self.excel_settings['last_day_col']):
-                
-                if col <= self.excel_settings['first_day_col'] + self.gui_data['day_offset']:
-                    keyboard.send("tab")
-                    time.sleep(0.5)
+            # range (8, 36 + 1) to be inclusive
+            for col in range(self.excel_settings['first_day_col'], self.excel_settings['last_day_col'] + 1):
+                print(f"{self.workbook.get_cell(row, self.excel_settings['name_col'])}: {row},{col}")
+
+                if col == 22: # skip middle column
+                    print("MIDDLE SKIP")
                     continue
+
+
+                if col < day_offset: # skip day offset
+
+                    print("OFFSET SKIP")
+                    self.keyboard.send_tab()
+
+                    if col < self.excel_settings['first_day_col'] + 13: time.sleep(0.35) 
+                    else: time.sleep(tab_delay)
+
+                    continue
+
+                
+
 
                 cell_content = self.workbook.get_cell(row, col)
-                if cell_content in self.config.VALUE_DICT:
-                    keyboard.write(self.config.VALUE_DICT[cell_content])
-                    # DEBUG
-                    print(f"""
-                        name:{self.excel.iat[row, self.excel_settings['name_col']]}
-                        index: {row},{col}
-                        value: {self.config.VALUE_DICT[cell_content]}
-                    """)
-
+                print(cell_content)
+                if cell_content and cell_content in self.config.VALUE_DICT:
+                    print(f"typing: {self.config.VALUE_DICT[cell_content]}")
+                    self.keyboard.type(self.config.VALUE_DICT[cell_content])
                 if cell_content:
                     for val in self.config.SPECIAL_VALUES:
                         if val in cell_content:
                             special_tracker.add(cell_content)
 
-                keyboard.send("tab")
-                time.sleep(0.5)
-
-            print("next line")
+                self.keyboard.send_tab() 
+                time.sleep(tab_delay)
 
         return special_tracker
 
-
-
-    def process_roster(self, movement_array) -> set:
-        special_tracker = set()
-        
-        for i in range(self.excel_settings['first_employee_row'],
-                      self.excel_settings['first_employee_row'] + len(movement_array)):
-
-            moves = movement_array[i - self.excel_settings['first_employee_row']]
-            if moves == "skip":
-                continue
-
-            self.keyboard_manager.simulate_moves(moves)
-
-            for j in range(self.excel_settings['first_day_col'], self.excel_settings['last_day_col']):
-                
-                if j <= self.excel_settings['first_day_col'] + self.gui_data['day_offset']:
-                    keyboard.send("tab")
-                    time.sleep(0.5)
-                    continue
-
-                cell_content = self.workbook.get_cell(i, j)
-                if cell_content in self.config.VALUE_DICT:
-                    keyboard.write(self.config.VALUE_DICT[cell_content])
-                    # DEBUG
-                    print(f"""
-                        name:{self.excel.iat[i, self.excel_settings['name_col']]}
-                        index: {i},{j}
-                        value: {self.config.VALUE_DICT[cell_content]}
-                    """)
-
-                if cell_content:
-                    for val in self.config.SPECIAL_VALUES:
-                        if val in cell_content:
-                            special_tracker.add(cell_content)
-
-                keyboard.send("tab")
-                time.sleep(0.5)
-
-            print("next line")
-
-        return special_tracker
