@@ -59,7 +59,7 @@ class RosterSelenium():
 		
 	
 	def select_schedule_hyperfind(self):
-		self.driver.find_element(By.XPATH, "//li[5]/div/div/span[2]").click()
+		self.driver.find_element(By.XPATH, "//li[6]/div/div/span[2]").click()
 		self.driver.switch_to.frame(1)
 		time.sleep(6) # stops page hang
 		self.js_click((By.ID, "hyperfindIcon"))
@@ -160,14 +160,13 @@ class RosterSelenium():
 				while True:
 					name = workbook.get_cell(row, name_col)
 					cell_color_theme = workbook.get_highlight_theme(row, name_col)
-					print(cell_color_theme)
 					if cell_color_theme == highlight_theme:
 						names_with_rows.append((name, row))
 
 					if name == "END": # TODO: better solution 
 						break
 
-					if row >= 140:
+					if row >= 240:
 						break
 
 					row += 1
