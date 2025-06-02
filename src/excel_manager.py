@@ -17,14 +17,6 @@ class ExcelWorkbook:
         
         
     def highlight_cell(self, row: int, col: int, hex_color: str = "#FF0000") -> None:
-        """
-        Highlights a specific cell with the specified color.
-        
-        Args:
-            row (int): Row number (1-based)
-            col (int): Column number (1-based)
-            color (str): Hex color code (default is red "#FF0000")
-        """
         fill_color =  hex_color.replace('#', '')
         fill_pattern = PatternFill(
             start_color=fill_color,

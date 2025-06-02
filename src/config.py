@@ -17,7 +17,7 @@ class Config:
             "ALS": "0645-1500",
             "ALS/7.5": "0645-1500", 
             "PALS": "0645-1500",
-            # manual time match
+            # manual time match (TODO: use regex for nnnn-nnnn in future?)
             "1830-2230": "1830-2230",
             "1030-1900": "1030-1900",
             "1430-1900": "1430-1900",

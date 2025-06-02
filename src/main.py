@@ -22,10 +22,10 @@ def get_xlsx_path() -> str:
 
 def main():
 
-    USE_PROXY = True
-    USE_LOCAL = True
-    START_DATE = date(2025, 4, 21)
-    END_DATE = date(2025, 5, 18)
+    USE_PROXY = False # ssh -N -D 8080 kayon@refract.online
+    USE_MANUEL_SETTINGS = True
+    START_DATE = date(2025, 5, 19)
+    END_DATE = date(2025, 6, 15)
 
 
 
@@ -40,11 +40,11 @@ def main():
    
     keyboard_manager.send_tab() # show interaction dialog on gnome
 
-    if USE_LOCAL:
+    if USE_MANUEL_SETTINGS:
         gui_data = {
-                'day_offset': 0,
-                'excel_file_path': get_xlsx_path(),
-            }
+            'day_offset': 0,
+            'excel_file_path': get_xlsx_path(),
+        }
     else:
         gui_data = gui_manager.show_start_gui()
     
