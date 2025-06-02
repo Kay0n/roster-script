@@ -135,7 +135,27 @@ class RosterSelenium():
 
 	
 
+	def get_highlighted_names(self, workbook, highlight_theme, name_col=37) -> list[(str, int)]:
+		"""Extract names from workbook where cell highlight matches specified color."""
+		names_with_rows = []
+		row = 1
+		
+		# Continue until end color
+		while True:
+			name = workbook.get_cell(row, name_col)
+			cell_color_theme = workbook.get_highlight_theme(row, name_col)
+			if cell_color_theme == highlight_theme:
+				names_with_rows.append((name, row))
 
+			if name == "END": # TODO: better solution 
+				break
+
+			if row >= 240:
+				break
+
+			row += 1
+				
+		return names_with_rows
 
 
 
@@ -151,27 +171,7 @@ class RosterSelenium():
 		Returns:
 				List of movements (integers) and "skip" strings, sorted alphabetically by name
 		"""
-		def get_highlighted_names(workbook, highlight_theme, name_col=37) -> list[(str, int)]:
-				"""Extract names from workbook where cell highlight matches specified color."""
-				names_with_rows = []
-				row = 1
-				
-				# Continue until end color
-				while True:
-					name = workbook.get_cell(row, name_col)
-					cell_color_theme = workbook.get_highlight_theme(row, name_col)
-					if cell_color_theme == highlight_theme:
-						names_with_rows.append((name, row))
-
-					if name == "END": # TODO: better solution 
-						break
-
-					if row >= 240:
-						break
-
-					row += 1
-						
-				return names_with_rows
+		
 		
 		def calculate_movements(names_with_rows: list[(str, int)], kronos_list) -> list[(int,int|str)]:
 			"""Calculate relative movements between valid names in the Kronos list."""
@@ -197,7 +197,7 @@ class RosterSelenium():
 			return movements
 		
 		# Get highlighted names with their row numbers
-		highlighted_names = get_highlighted_names(workbook, highlight_color)
+		highlighted_names = self.get_highlighted_names(workbook, highlight_color)
 
 		sorted_names = sorted(highlighted_names, key=lambda x: x[0])
 		
