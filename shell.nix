@@ -11,7 +11,13 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
+    VENV=.venv
+
+    if test ! -d $VENV; then
+      ${pkgs.python312.interpreter} -m venv $VENV
+    fi
+    source ./$VENV/bin/activate
+    pip install -r requirements.txt
     zsh
-    source .venv/bin/activate
   '';
 }
