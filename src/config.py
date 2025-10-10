@@ -1,4 +1,9 @@
 # config.py
+
+from typing import Dict
+from models import PayCode
+
+
 class Config:
     def __init__(self):
         self.VALUE_DICT = {
@@ -9,7 +14,7 @@ class Config:
             "N": "2215-0700",
             "ADMIN+4": "0645-1900",
             "ADMIN": "0645-1500",
-            "7.5": "0645-1500",
+            "7.5": "0645-1445",
             "7.6": "0645-1535",
             "SKILLS": "1000-1400",
             "skills": "1000-1400",
@@ -17,35 +22,35 @@ class Config:
             "ALS": "0645-1500",
             "ALS/7.5": "0645-1500", 
             "PALS": "0645-1500",
-            # manual time match (TODO: use regex for nnnn-nnnn in future?)
-            "1830-2230": "1830-2230",
-            "1030-1900": "1030-1900",
-            "1430-1900": "1430-1900",
-            "1100-1900": "1100-1900",
-            "0730-1500": "0730-1500",
-            "0730-1501": "0730-1501",
-            "0730-1502": "0730-1502",
-            "1045-1900":"1045-1900",
-            "0800-1600":"0800-1600",
-
-
         }
 
-        self.SPECIAL_VALUES = [ 
-            # These contain symbols that require paycodes 
-            # and need to be entered manually. They are not exact matches. 
-            "AL/", "A/L", "M/L", "ML", "MLUP", "UPML",
-            "PHNW", "RPH", "STUDY", "LSL", "SD", "SL", "ORIENT",
+
+        self.PAYCODES: Dict[str, PayCode] = {
+            "AL": PayCode(id = 226, name = "LVE-Annual"),
+        }
+
+
+        self.SKIP_VALUES = [
+            "O",
+            "E/NRM",
+            "L/NRM",
+            "N/NRM",
         ]
 
 
-        self.ICU_DEFAULTS = {
-            'name_col': 5,
+        # TODO: Convert to paycode objects. Work out parsing AL/, A/L etc 
+        # self.SPECIAL_VALUES = [ 
+        #     "AL/", "A/L", "M/L", "ML", "MLUP", "UPML",
+        #     "PHNW", "RPH", "STUDY", "LSL", "SD", "SL", "ORIENT",
+        # ]
+
+
+        self.ICU_DEFAULTS: Dict[str, str | int] = {
             'kronos_name_col': 37,
+            'date_row': 2,
             'first_employee_row': 3,
             'first_day_col': 8,
             'last_day_col': 36,  # first_day_col + 28
-            'day_offset': 0,
-            'excel_file_path': "",
+            'buffer_col': 22,
             "sheet_name": "ICU-HDU",
         }
