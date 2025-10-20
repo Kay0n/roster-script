@@ -1,5 +1,12 @@
 { pkgs ? import <nixpkgs> {} }:
 
+
+let 
+  system = builtins.currentSystem;
+  venvDir = ".venv-${system}";
+in
+
+
 pkgs.mkShell {
   name = "tkinter-pynput";
 
@@ -12,12 +19,11 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-    VENV=.venv
 
-    if test ! -d $VENV; then
-      ${pkgs.python312.interpreter} -m venv $VENV
+    if [ ! -d "${venvDir}" ]; then
+      ${pkgs.python312.interpreter} -m venv ${venvDir}
     fi
-    source ./$VENV/bin/activate
+    source ${venvDir}/bin/activate
     pip install -r requirements.txt
     # zsh
   '';
