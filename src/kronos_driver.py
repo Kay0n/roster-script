@@ -6,12 +6,15 @@
 
 import time
 from datetime import date
+import shutil
+import platform
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as condition
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
@@ -28,13 +31,25 @@ class RosterSelenium():
 		options.page_load_strategy = 'normal'  # Changed from default to handle dynamic content better
 		options.set_preference("browser.tabs.remote.autostart", False)
 		options.set_preference("browser.tabs.remote.autostart.2", False)
+
 		if use_proxy:
 			firefox_profile.set_preference("network.proxy.type", 1)  # 1 means manual proxy configuration
 			firefox_profile.set_preference("network.proxy.socks", "localhost")  
 			firefox_profile.set_preference("network.proxy.socks_port", proxy_port)  
 			firefox_profile.set_preference("network.proxy.socks_version", 5)
 			options.profile = firefox_profile
-		self.driver = webdriver.Firefox(options=options)
+
+		arch = platform.machine().lower()
+		if arch == "aarch64":
+			geckodriver_path = shutil.which("geckodriver")
+			if not geckodriver_path:
+				raise FileNotFoundError("geckodriver not found in PATH")
+			service = Service(executable_path=geckodriver_path)
+			self.driver = webdriver.Firefox(service=service, options=options)
+		else:
+			self.driver = webdriver.Firefox(options=options)
+
+
 		self.wait = WebDriverWait(self.driver, 12)
 		self.driver.implicitly_wait(12)
 		self.vars = {}
