@@ -26,15 +26,22 @@ class Config:
 
 
         self.PAYCODES: Dict[str, PayCode] = {
-            "AL": PayCode(id = 226, name = "LVE-Annual"),
+            "AL":     PayCode(id = 226, name = "LVE-Annual"),
+            "LSL":    PayCode(id = 229, name = "LVE-Long Service Leave"), # has 'shortName: "LSL"' in the payload, not sure if needed?
+            "ML":     PayCode(id = 252, name = "LVE-Maternity Paid"), # has 'shortName: "MAT"'
+            "MLUP":   PayCode(id = 251, name = "LVE-Maternity Unpaid"), # has 'shortName: "MAU"'
         }
 
-
+        # TODO: Globbing
         self.SKIP_VALUES = [
             "O",
             "E/NRM",
             "L/NRM",
             "N/NRM",
+            "NA", 
+            "UNI",
+            "WK3" # glob (WK1, WK2 etc)
+            "SD/" # glob (SD/11.5, SD/7.5 etc)
         ]
 
 
