@@ -19,7 +19,7 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-
+    export VENVDIR=".venv-${system}"
     if [ ! -d "${venvDir}" ]; then
       ${pkgs.python312.interpreter} -m venv ${venvDir}
     fi

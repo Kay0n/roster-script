@@ -21,9 +21,11 @@ import os
 
 USE_PROXY = False; # ssh -N -D 8080 kayon@refract.online
 USE_MANUEL_SETTINGS = True;
-START_DATE = date(2025, 10, 6);
-END_DATE = date(2025, 11, 2);
-DAY_OFFSET = 5;
+# START_DATE = date(2025, 10, 6);
+# END_DATE = date(2025, 11, 2);
+START_DATE = date(2025, 11, 3);
+END_DATE = date(2025, 11, 30);
+DAY_OFFSET = 0;
 HIGHLIGHT_THEME = 8;
 TIMECODE_REGEX = re.compile(r"^\d{4}-\d{4}$") # nnnn-nnnn, n = digit
 
@@ -114,9 +116,8 @@ def upload_shifts(driver: WebDriver, shift_entries: Dict[str, list[Shift | PayCo
                     "addShift(arguments[0], arguments[1], arguments[2]);",
                     employee_id, shift.date, shift.shift_string
                 )
-                time.sleep(0.08)
+                time.sleep(0.15)
                 print(f"Added shift {shift.shift_string} for {employee_name}:{employee_id} on {shift.date}")
-                
                 continue;
             
             # paycode_obj: Dict[str, str | int]= {'id': shift.paycode.id, 'name': shift.paycode.name}
@@ -137,7 +138,7 @@ def parse_date(date: str) -> str:
 
 
 
-def proccess_excel(config: Config, workbook: ExcelWorkbook):
+def proccess_excel(config: Config, workbook: ExcelWorkbook) -> tuple[list[Shift | PayCodeShift], set[str], int]:
     first_employee_row: int = int(config.ICU_DEFAULTS["first_employee_row"])
     name_col: int = int(config.ICU_DEFAULTS["kronos_name_col"])
     first_day_col = int(config.ICU_DEFAULTS['first_day_col'])
@@ -147,6 +148,7 @@ def proccess_excel(config: Config, workbook: ExcelWorkbook):
     if start_day_col > 22: start_day_col += 1; # account for buffer
     shift_entries: Dict[str, list[Shift | PayCodeShift]] = {};
     unknown_symbols: set[str] = set();
+    employee_count: int = 0;
 
     for row in range(first_employee_row, 300):
         employee_name = workbook.get_cell(row, name_col)
@@ -154,6 +156,7 @@ def proccess_excel(config: Config, workbook: ExcelWorkbook):
 
         if not employee_name or theme != HIGHLIGHT_THEME:
             continue
+        employee_count += 1;
 
         shift_list: list[Shift | PayCodeShift] = [];
 
@@ -187,7 +190,9 @@ def proccess_excel(config: Config, workbook: ExcelWorkbook):
     
     # sort
     shift_entries = {k: v for k, v in sorted(shift_entries.items(), key=lambda item: item[0])}
-    return shift_entries, unknown_symbols
+    return shift_entries, unknown_symbols, employee_count
+
+
 
 
 
@@ -232,12 +237,13 @@ def main():
 
     inject_js(kronos_driver)
     
-    _ = input("Press ENTER to ingestion excel...")
+    _ = input("Press ENTER to ingest excel...")
 
     workbook: ExcelWorkbook = ExcelWorkbook(get_xlsx_path(), sheet_name)
-    shift_entries, unknown_symbols = proccess_excel(config, workbook)
+    shift_entries, unknown_symbols, employee_count = proccess_excel(config, workbook)
 
     print("Roster ingestion complete")
+    print(f"Proccessed {len(shift_entries)} shifts from {employee_count} employees");
     print("Unknown Symbols:")
     print(unknown_symbols)
 

@@ -13,6 +13,8 @@
  */
 addPayCode = function(employeeId, dateString, payCodeObject, hours) {
 
+    const UNPAID_PAYCODE = { id: 269, name: "LVE-Unpaid"}
+
     return new Promise((resolve, reject) => {
 
         const rosterGrid = Ext.getCmp('krnScheduleGrid_schedule_by_employee');
@@ -66,9 +68,29 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
                 resolve(response);
             })
             .catch(error => {
-                console.error(`Paste operation for ${employeeId} at ${dateString} with 
-                    pay code ${payCodeObject.name} failed, server may have rejected it`, error);
-                reject(error);
+                console.error(`Paste operation for ${employeeId} at ${dateString} with pay code ${payCodeObject.name} failed`, error);
+
+                if (error && error.errorCode === 1401) {
+                    console.log(`Overdrawn paycode detected, retrying with UNPAID_PAYCODE for ${employeeId} at ${dateString}`);
+                    
+                    functionArgument.scheduledItem.payCode = {
+                        id: { id: UNPAID_PAYCODE.id },
+                        name: UNPAID_PAYCODE.name,
+                        type: 1, 
+                        unit: -1 
+                    },
+
+                    copyPasteService[functionName](functionArgument)
+                        .then(response => {
+                            resolve(response);
+                        })
+                        .catch(retryError => {
+                            console.error(`Retry failed for ${employeeId} at ${dateString} with UNPAID_PAYCODE`, retryError);
+                            reject(retryError);
+                        });
+                } else {
+                    reject(error);
+                }
             });
     });
 }

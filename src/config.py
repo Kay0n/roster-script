@@ -22,14 +22,17 @@ class Config:
             "ALS": "0645-1500",
             "ALS/7.5": "0645-1500", 
             "PALS": "0645-1500",
+            "ACM" : "0645-1500",
+            "SD/7.5": "0645-1500",
+            "SD/11.5": "0645-1900",
         }
 
 
         self.PAYCODES: Dict[str, PayCode] = {
             "AL":     PayCode(id = 226, name = "LVE-Annual"),
-            "LSL":    PayCode(id = 229, name = "LVE-Long Service Leave"), # has 'shortName: "LSL"' in the payload, not sure if needed?
-            "ML":     PayCode(id = 252, name = "LVE-Maternity Paid"), # has 'shortName: "MAT"'
-            "MLUP":   PayCode(id = 251, name = "LVE-Maternity Unpaid"), # has 'shortName: "MAU"'
+            # "LSL":    PayCode(id = 229, name = "LVE-Long Service Leave"), # has 'shortName: "LSL"' in the payload, not sure if needed?
+            # "ML":     PayCode(id = 252, name = "LVE-Maternity Paid"), # has 'shortName: "MAT"'
+            # "MLUP":   PayCode(id = 251, name = "LVE-Maternity Unpaid"), # has 'shortName: "MAU"'
         }
 
         # TODO: Globbing
@@ -40,8 +43,10 @@ class Config:
             "N/NRM",
             "NA", 
             "UNI",
-            "WK3" # glob (WK1, WK2 etc)
-            "SD/" # glob (SD/11.5, SD/7.5 etc)
+            "WK3", # glob (WK1, WK2 etc)
+            "LSL",
+            "ML" # glob (ML/11.5, ML/7.5)
+            "MLUP" # glob
         ]
 
 
