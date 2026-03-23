@@ -26,7 +26,6 @@ USE_MANUEL_SETTINGS = True;
 START_DATE = date(2026, 3, 23);
 END_DATE = date(2026, 4, 19);
 DAY_OFFSET = 0;
-HIGHLIGHT_THEME = 8;
 TIMECODE_REGEX = re.compile(r"^\d{4}-\d{4}$") # nnnn-nnnn, n = digit
 
 
@@ -79,23 +78,6 @@ def parse_shift(employee_name: str, date_str: str, cell_content: str, config: Co
         return PayCodeShift(employee_name, date_str, paycode, hours)
     
     return None
-
-
-
-def is_valid_fill(fill: Dict[str, str]) -> bool:
-    THEME = 3
-
-    if fill["rgb"] == "93CDDD":
-        return True;
-
-    source = fill.get("source")
-
-    is_correct_theme = (
-        source is not None
-        and source.startswith("theme(")
-        and int(source[6:].split(",")[0]) == THEME
-    )
-    return is_correct_theme
 
 
 
@@ -160,6 +142,7 @@ def parse_date(date: str) -> str:
 def proccess_excel(config: Config, workbook: ExcelWorkbook) -> tuple[dict[str, list[Shift | PayCodeShift]], set[str], int]:
     first_employee_row: int = int(config.ICU_DEFAULTS["first_employee_row"])
     name_col: int = int(config.ICU_DEFAULTS["kronos_name_col"])
+    x_check_col: int = int(config.ICU_DEFAULTS["x_check_col"])
     first_day_col = int(config.ICU_DEFAULTS['first_day_col'])
     last_day_col = int(config.ICU_DEFAULTS['last_day_col']);
     date_row = int(config.ICU_DEFAULTS['date_row'])
@@ -170,15 +153,14 @@ def proccess_excel(config: Config, workbook: ExcelWorkbook) -> tuple[dict[str, l
     employee_count: int = 0;
 
     for row in range(first_employee_row, 300):
-        employee_name = workbook.get_cell(row, name_col)
-        # theme = workbook.get_highlight_theme(row, name_col)
-        fill = workbook.normalize_fill_rgb(workbook.sheet.cell(row=row, column=name_col))
+        employee_name = workbook.get_cell(row, name_col).strip()
+        if not employee_name:
+            continue
+        x_check_cell = workbook.get_cell(row, x_check_col).strip()
+        if x_check_cell.strip().lower() == "x":
+            continue
 
-        print(f"Processing row {row}: '{employee_name}' with fill {fill}")
-        if  not employee_name or not is_valid_fill(fill):
-            continue;
-        # if not employee_name or theme != HIGHLIGHT_THEME:
-        #     continue;
+        print(f"Processing row {row}: '{employee_name}'")
         employee_count += 1;
 
         shift_list: list[Shift | PayCodeShift] = [];
