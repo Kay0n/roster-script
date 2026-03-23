@@ -23,8 +23,8 @@ USE_PROXY = False; # ssh -N -D 8080 kayon@refract.online
 USE_MANUEL_SETTINGS = True;
 # START_DATE = date(2025, 10, 6);
 # END_DATE = date(2025, 11, 2);
-START_DATE = date(2025, 11, 3);
-END_DATE = date(2025, 11, 30);
+START_DATE = date(2026, 3, 23);
+END_DATE = date(2026, 4, 19);
 DAY_OFFSET = 0;
 HIGHLIGHT_THEME = 8;
 TIMECODE_REGEX = re.compile(r"^\d{4}-\d{4}$") # nnnn-nnnn, n = digit
@@ -82,6 +82,23 @@ def parse_shift(employee_name: str, date_str: str, cell_content: str, config: Co
 
 
 
+def is_valid_fill(fill: Dict[str, str]) -> bool:
+    THEME = 3
+
+    if fill["rgb"] == "93CDDD":
+        return True;
+
+    source = fill.get("source")
+
+    is_correct_theme = (
+        source is not None
+        and source.startswith("theme(")
+        and int(source[6:].split(",")[0]) == THEME
+    )
+    return is_correct_theme
+
+
+
 def get_invalid_employees(driver: WebDriver, shift_entries: Dict[str, list[Shift | PayCodeShift]]) -> list[str]:
     employees = driver.execute_script("return window.getEmployees();")
     name_to_id = {e['1']: e['Id'] for e in employees}
@@ -120,15 +137,17 @@ def upload_shifts(driver: WebDriver, shift_entries: Dict[str, list[Shift | PayCo
                 print(f"Added shift {shift.shift_string} for {employee_name}:{employee_id} on {shift.date}")
                 continue;
             
-            # paycode_obj: Dict[str, str | int]= {'id': shift.paycode.id, 'name': shift.paycode.name}
-            # driver.execute_script(
-            #     "addPayCode(arguments[0], arguments[1], arguments[2], arguments[3]);",
-            #     employee_id, shift.date, paycode_obj, shift.hours
-            # )
-            # time.sleep(0.2)
-            # print(f"Added paycode {shift.paycode.name} ({shift.hours}h) for {employee_name} on {shift.date}")
+            paycode_obj: Dict[str, str | int]= {'id': shift.paycode.id, 'name': shift.paycode.name}
+            driver.execute_script(
+                "addPayCode(arguments[0], arguments[1], arguments[2], arguments[3]);",
+                employee_id, shift.date, paycode_obj, shift.hours
+            )
+            time.sleep(0.3)
+            print(f"Added paycode {shift.paycode.name} ({shift.hours}h) for {employee_name} on {shift.date}")
             
         time.sleep(0.8)
+
+        
 
 
 
@@ -138,7 +157,7 @@ def parse_date(date: str) -> str:
 
 
 
-def proccess_excel(config: Config, workbook: ExcelWorkbook) -> tuple[list[Shift | PayCodeShift], set[str], int]:
+def proccess_excel(config: Config, workbook: ExcelWorkbook) -> tuple[dict[str, list[Shift | PayCodeShift]], set[str], int]:
     first_employee_row: int = int(config.ICU_DEFAULTS["first_employee_row"])
     name_col: int = int(config.ICU_DEFAULTS["kronos_name_col"])
     first_day_col = int(config.ICU_DEFAULTS['first_day_col'])
@@ -152,10 +171,14 @@ def proccess_excel(config: Config, workbook: ExcelWorkbook) -> tuple[list[Shift 
 
     for row in range(first_employee_row, 300):
         employee_name = workbook.get_cell(row, name_col)
-        theme = workbook.get_highlight_theme(row, name_col)
+        # theme = workbook.get_highlight_theme(row, name_col)
+        fill = workbook.normalize_fill_rgb(workbook.sheet.cell(row=row, column=name_col))
 
-        if not employee_name or theme != HIGHLIGHT_THEME:
-            continue
+        print(f"Processing row {row}: '{employee_name}' with fill {fill}")
+        if  not employee_name or not is_valid_fill(fill):
+            continue;
+        # if not employee_name or theme != HIGHLIGHT_THEME:
+        #     continue;
         employee_count += 1;
 
         shift_list: list[Shift | PayCodeShift] = [];

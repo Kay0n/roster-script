@@ -1,6 +1,6 @@
 .venv-*
 *.xlsx
-
+.old-rosters
 
 
 # Byte-compiled / optimized / DLL files

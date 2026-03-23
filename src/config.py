@@ -29,7 +29,11 @@ class Config:
 
 
         self.PAYCODES: Dict[str, PayCode] = {
-            "AL":     PayCode(id = 226, name = "LVE-Annual"),
+            "AL":     PayCode(id=226, name="LVE-Annual"),
+            "SL":     PayCode(id=915, name="LVE-Personal No Certificate"),
+            # "SL/x"
+            # "ORIENT"
+            # Ignore the following, not entered by ICU
             # "LSL":    PayCode(id = 229, name = "LVE-Long Service Leave"), # has 'shortName: "LSL"' in the payload, not sure if needed?
             # "ML":     PayCode(id = 252, name = "LVE-Maternity Paid"), # has 'shortName: "MAT"'
             # "MLUP":   PayCode(id = 251, name = "LVE-Maternity Unpaid"), # has 'shortName: "MAU"'
@@ -40,13 +44,23 @@ class Config:
             "O",
             "E/NRM",
             "L/NRM",
+            "NRM/L",
             "N/NRM",
             "NA", 
             "UNI",
+
             "WK3", # glob (WK1, WK2 etc)
+            "WK11"
+            "WK13",
+            "WK15",
+            "WK17",
+
             "LSL",
+
             "ML" # glob (ML/11.5, ML/7.5)
             "MLUP" # glob
+            "M/L"
+            "ML/11.5"
         ]
 
 

@@ -27,17 +27,21 @@ class RosterSelenium():
 
 	def setup_driver(self, use_proxy: bool=False, proxy_port: int=8080):
 		options = Options()
-		firefox_profile = webdriver.FirefoxProfile()
-		options.page_load_strategy = 'normal'  # Changed from default to handle dynamic content better
+		options.page_load_strategy = 'normal'  
 		options.set_preference("browser.tabs.remote.autostart", False)
 		options.set_preference("browser.tabs.remote.autostart.2", False)
 
+		firefox_profile = webdriver.FirefoxProfile()
+
+
+
 		if use_proxy:
-			firefox_profile.set_preference("network.proxy.type", 1)  # 1 means manual proxy configuration
+			firefox_profile.set_preference("network.proxy.type", 1)  # 1 = manual proxy configuration
 			firefox_profile.set_preference("network.proxy.socks", "localhost")  
 			firefox_profile.set_preference("network.proxy.socks_port", proxy_port)  
 			firefox_profile.set_preference("network.proxy.socks_version", 5)
-			options.profile = firefox_profile
+
+		options.profile = firefox_profile
 
 		arch = platform.machine().lower()
 		if arch == "aarch64":

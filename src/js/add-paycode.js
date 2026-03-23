@@ -1,3 +1,5 @@
+
+// addPayCode(105645, "2026-02-23", {id: 226, name: "LVE-Annual"}, 7.5)
 /**
  * Adds a pay code shift to the grid. Results are not visible, 
  * but can be seen upon save and refresh.
@@ -13,7 +15,7 @@
  */
 addPayCode = function(employeeId, dateString, payCodeObject, hours) {
 
-    const UNPAID_PAYCODE = { id: 269, name: "LVE-Unpaid"}
+    const UNPAID_PAYCODE = { id: 269, name: "LVE-Unpaid" };
 
     return new Promise((resolve, reject) => {
 
@@ -21,18 +23,12 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
         if (!rosterGrid) return reject("Grid component not found.");
 
         const gridElement = rosterGrid.getEl().dom;
-        if (!gridElement) return reject("Grid DOM element not found");
-
         const injector = angular.element(gridElement).injector();
-        if (!injector) return reject("Angular injector not found");
-
         const copyPasteService = injector.get('CopyPasteQuickActionService');
-        if (!copyPasteService) return reject("'CopyPasteQuickActionService' not found");
-
+        
         const resourceStore = rosterGrid.getResourceStore();
         const employeeRecord = resourceStore.findRecord('Id', employeeId, 0, false, true, true);
         if (!employeeRecord) return reject(`Employee with ID ${employeeId} not found`);
-
 
         const functionArgument = {
             scheduledItem: {
@@ -44,56 +40,78 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
                     unit: -1 
                 },
                 employee: employeeRecord.getData().Dto,
-                startDateTime: `${dateString} 05:00:00.000`, // time based off intercepted payloads
+                startDateTime: `${dateString} 05:00:00.000`, // time based of incercepted payload
                 id: null, 
-                commentNotes: [], exactScheduledAmountInMinutes: -1, isInherited: false,
+                commentNotes:[], exactScheduledAmountInMinutes: -1, isInherited: false,
                 isOnlyCommentChanged: false, isOverrideAccrualActive: false,
                 isStartTimeChanged: false, orgJob: {}, overrideAccrualAmountInDays: 0,
-                scheduledAmountInMinutes: 0, transferLaborEntries: [], unavailabilityAmountInMinutes: 0
+                scheduledAmountInMinutes: 0, transferLaborEntries:[], unavailabilityAmountInMinutes: 0
             },
             date: `${dateString} 00:00:00.000`,
             employee: employeeRecord.getData().Dto,
             bypassAccrualWarning: false, 
-            
         };
 
         const functionName = 'pastePayCodeEditActionChange';
-        if (typeof copyPasteService[functionName] !== 'function') {
-            return reject(`Function '${functionName}' not found on CopyPasteQuickActionService`);
-        }
+
+        const updateExtJsGridVisually = (payCodeName) => {
+            const eventStore = rosterGrid.getEventStore ? rosterGrid.getEventStore() : rosterGrid.getStore();
+            
+            const [year, month, day] = dateString.split('-');
+            const startDate = new Date(year, month - 1, day, 5, 0); 
+            const endDate = new Date(startDate.getTime() + (hours * 60 * 60 * 1000));
+
+            const payCodeVisualData = {
+                ResourceId: parseInt(employeeId, 10),
+                Name: payCodeName,
+                Amount: hours.toString(),
+                DefinitionId: "paycodeedit", 
+                Draggable: true,
+                Resizable: false,
+                StartDate: startDate,
+                EndDate: endDate,
+                label: payCodeName,
+                commentsLabel: "Comments",
+                Cls: "",
+                Dto: functionArgument.scheduledItem 
+            };
+
+            const newRecord = Ext.create('krn.Sch.models.EntityItem', payCodeVisualData);
+            eventStore.add(newRecord); 
+        };
 
 
         copyPasteService[functionName](functionArgument)
             .then(response => {
+                updateExtJsGridVisually(payCodeObject.name);
                 resolve(response);
             })
             .catch(error => {
-                console.error(`Paste operation for ${employeeId} at ${dateString} with pay code ${payCodeObject.name} failed`, error);
-
-                if (error && error.errorCode === 1401) {
-                    console.log(`Overdrawn paycode detected, retrying with UNPAID_PAYCODE for ${employeeId} at ${dateString}`);
+                const is_overdrawn = (error && (error.errorCode === 1401 || error.errorCode === 9));
+                
+                if (is_overdrawn) {
+                    console.log(`Overdrawn paycode detected, retrying with UNPAID_PAYCODE...`);
                     
+                    // use unpaid paycode
                     functionArgument.scheduledItem.payCode = {
                         id: { id: UNPAID_PAYCODE.id },
                         name: UNPAID_PAYCODE.name,
                         type: 1, 
                         unit: -1 
-                    },
+                    };
 
                     copyPasteService[functionName](functionArgument)
                         .then(response => {
+                            updateExtJsGridVisually(UNPAID_PAYCODE.name);
                             resolve(response);
                         })
-                        .catch(retryError => {
-                            console.error(`Retry failed for ${employeeId} at ${dateString} with UNPAID_PAYCODE`, retryError);
-                            reject(retryError);
-                        });
+                        .catch(retryError => reject(retryError));
                 } else {
                     reject(error);
                 }
             });
     });
-}
+};
 
 
 
