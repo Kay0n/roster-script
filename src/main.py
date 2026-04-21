@@ -5,7 +5,7 @@
 
 
 from config import Config
-from excel_manager import ExcelWorkbook
+from excel_workbook import ExcelWorkbook
 from kronos_driver import RosterSelenium
 from models import PayCodeShift, Shift
 
@@ -23,8 +23,8 @@ USE_PROXY = False; # ssh -N -D 8080 kayon@refract.online
 USE_MANUEL_SETTINGS = True;
 # START_DATE = date(2025, 10, 6);
 # END_DATE = date(2025, 11, 2);
-START_DATE = date(2026, 3, 23);
-END_DATE = date(2026, 4, 19);
+START_DATE = date(2026, 4, 20);
+END_DATE = date(2026, 5, 17);
 DAY_OFFSET = 0;
 TIMECODE_REGEX = re.compile(r"^\d{4}-\d{4}$") # nnnn-nnnn, n = digit
 
@@ -101,13 +101,16 @@ def upload_shifts(driver: WebDriver, shift_entries: Dict[str, list[Shift | PayCo
     employees = driver.execute_script("return window.getEmployees();")
     name_to_id = {e['1']: e['Id'] for e in employees}
 
-    for employee_name, shifts in shift_entries.items():
+    for employee_name, employee_shifts in shift_entries.items():
         
         employee_id = name_to_id.get(employee_name)
         if not employee_id:
             continue
 
-        for shift in shifts:
+        if len(employee_shifts) < 1:
+            continue
+
+        for shift in employee_shifts:
 
             if isinstance(shift, Shift):
                 
@@ -115,7 +118,7 @@ def upload_shifts(driver: WebDriver, shift_entries: Dict[str, list[Shift | PayCo
                     "addShift(arguments[0], arguments[1], arguments[2]);",
                     employee_id, shift.date, shift.shift_string
                 )
-                time.sleep(0.15)
+                time.sleep(0.6)
                 print(f"Added shift {shift.shift_string} for {employee_name}:{employee_id} on {shift.date}")
                 continue;
             
@@ -124,10 +127,10 @@ def upload_shifts(driver: WebDriver, shift_entries: Dict[str, list[Shift | PayCo
                 "addPayCode(arguments[0], arguments[1], arguments[2], arguments[3]);",
                 employee_id, shift.date, paycode_obj, shift.hours
             )
-            time.sleep(0.3)
+            time.sleep(0.6)
             print(f"Added paycode {shift.paycode.name} ({shift.hours}h) for {employee_name} on {shift.date}")
             
-        time.sleep(0.8)
+        time.sleep(1.0)
 
         
 
