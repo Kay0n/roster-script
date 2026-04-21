@@ -1,7 +1,0 @@
-openpyxl
-numpy
-selenium
-keyboard
-pytest
-python-dotenv
-pynput

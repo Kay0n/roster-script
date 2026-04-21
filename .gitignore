@@ -1,7 +1,7 @@
-.venv-*
 *.xlsx
 .old-rosters
-
+.devenv
+.~lock.*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
