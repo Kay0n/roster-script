@@ -23,8 +23,8 @@ USE_PROXY = False; # ssh -N -D 8080 kayon@refract.online
 USE_MANUEL_SETTINGS = True;
 # START_DATE = date(2025, 10, 6);
 # END_DATE = date(2025, 11, 2);
-START_DATE = date(2026, 4, 20);
-END_DATE = date(2026, 5, 17);
+START_DATE = date(2026, 11, 2);
+END_DATE = date(2026, 11, 29);
 DAY_OFFSET = 0;
 TIMECODE_REGEX = re.compile(r"^\d{4}-\d{4}$") # nnnn-nnnn, n = digit
 
@@ -223,6 +223,30 @@ def inject_js(kronos_driver: RosterSelenium):
 
 
 
+
+def ingest_roster(sheet_name, config, kronos_driver) -> dict[str, list[Shift | PayCodeShift]]:
+
+    workbook: ExcelWorkbook = ExcelWorkbook(get_xlsx_path(), sheet_name)
+    shift_entries, unknown_symbols, employee_count = proccess_excel(config, workbook)
+
+    print("Roster ingestion complete")
+    print(f"Proccessed {len(shift_entries)} shifts from {employee_count} employees");
+    print("Unknown Symbols:")
+    print(unknown_symbols)
+
+    print("Invalid Employees:")
+    for employee in get_invalid_employees(kronos_driver.driver, shift_entries):
+        print(employee)
+    
+    ingest_complete = input("Press ENTER to continue, press SPACE then ENTER to reingest") 
+    if ingest_complete == " ":
+        return ingest_roster(sheet_name, config, kronos_driver)
+    return shift_entries
+
+
+
+
+
 def main():
 
     kronos_driver =  RosterSelenium()
@@ -240,25 +264,13 @@ def main():
     _ = input("Press ENTER to start kronos...")
 
     setup_kronos(kronos_driver, user, password);
-
     kronos_driver.set_kronos_frame();
-
     inject_js(kronos_driver)
-    
+
     _ = input("Press ENTER to ingest excel...")
 
-    workbook: ExcelWorkbook = ExcelWorkbook(get_xlsx_path(), sheet_name)
-    shift_entries, unknown_symbols, employee_count = proccess_excel(config, workbook)
-
-    print("Roster ingestion complete")
-    print(f"Proccessed {len(shift_entries)} shifts from {employee_count} employees");
-    print("Unknown Symbols:")
-    print(unknown_symbols)
-
-    print("Invalid Employees:")
-    for employee in get_invalid_employees(kronos_driver.driver, shift_entries):
-        print(employee)
-
+    shift_entries = ingest_roster(sheet_name, config, kronos_driver) 
+    
     _ = input("Press ENTER to upload shifts...")
 
     upload_shifts(kronos_driver.driver, shift_entries)

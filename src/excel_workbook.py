@@ -2,8 +2,6 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 from typing import Any
 from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.styles.colors import COLOR_INDEX
-
 class ExcelWorkbook:
     def __init__(self, file_path: str, sheet_name: str) -> None:
         self.file_path: str = file_path

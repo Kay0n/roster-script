@@ -30,6 +30,9 @@ class Config:
             "SD/11.5":   "0645-1845",
             "UPSKILL":   "0645-1445",
             "Study 7.5": "0645-1445",
+            "STUDY":     "0645-1445",
+            "Orient":    "0645-1445",
+            "ECMO/SD":   "0645-1445", 
 
         }
 
@@ -37,8 +40,10 @@ class Config:
         self.PAYCODES: Dict[str, PayCode] = {
             "AL":     PayCode(id=226, name="LVE-Annual"),
             "SL":     PayCode(id=915, name="LVE-Personal No Certificate"),
-            # "SL/x"
-            # "ORIENT"
+            "LWOP":   PayCode(id=269, name="LVE-Unpaid"),
+            # To check:
+            # "PHNW", "RPH", "STUDY", "SD", "ORIENT",
+
             # Ignore the following, not entered by ICU
             # "LSL":    PayCode(id = 229, name = "LVE-Long Service Leave"), # has 'shortName: "LSL"' in the payload, not sure if needed?
             # "ML":     PayCode(id = 252, name = "LVE-Maternity Paid"), # has 'shortName: "MAT"'
@@ -52,11 +57,12 @@ class Config:
             "L/NRM",
             "NRM/L",
             "N/NRM",
+            "NRM",
             "NA", 
             "UNI",
 
             "WK3", # glob (WK1, WK2 etc)
-            "WK11"
+            "WK11",
             "WK13",
             "WK15",
             "WK17",
@@ -69,14 +75,6 @@ class Config:
             "ML/11.5"
             "RPH"
         ]
-
-
-        # TODO: Convert to paycode objects. Work out parsing AL/, A/L etc 
-        # self.SPECIAL_VALUES = [ 
-        #     "AL/", "A/L", "M/L", "ML", "MLUP", "UPML",
-        #     "PHNW", "RPH", "STUDY", "LSL", "SD", "SL", "ORIENT",
-        # ]
-
 
         self.ICU_DEFAULTS: Dict[str, str | int] = {
             'kronos_name_col': 37,

@@ -7,7 +7,7 @@
 import time
 from datetime import date
 import shutil
-import platform
+import os
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -22,8 +22,9 @@ from selenium.webdriver.remote.webelement import WebElement
 
 class RosterSelenium():
 
-	driver: WebDriver
-	wait: WebDriverWait[WebDriver]
+	def __init__(self):
+		self.driver: WebDriver | None = None
+		self.wait: WebDriverWait[WebDriver] | None = None
 
 	def setup_driver(self, use_proxy: bool=False, proxy_port: int=8080):
 		options = Options()
@@ -43,15 +44,19 @@ class RosterSelenium():
 
 		options.profile = firefox_profile
 
-		arch = platform.machine().lower()
-		if arch == "aarch64":
-			geckodriver_path = shutil.which("geckodriver")
-			if not geckodriver_path:
-				raise FileNotFoundError("geckodriver not found in PATH")
-			service = Service(executable_path=geckodriver_path)
-			self.driver = webdriver.Firefox(service=service, options=options)
-		else:
-			self.driver = webdriver.Firefox(options=options)
+		# Use geckodriver from PATH so Selenium Manager doesn't download a non-Nix Firefox
+		geckodriver_path = shutil.which("geckodriver")
+		if not geckodriver_path:
+			raise FileNotFoundError("geckodriver not found in PATH")
+		firefox_path = shutil.which("firefox")
+		if not firefox_path:
+			raise FileNotFoundError("firefox not found in PATH")
+		options.binary_location = firefox_path
+
+		# devenv's python sets LD_LIBRARY_PATH to its pinned libstdc++, which breaks the system Firefox
+		env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
+		service = Service(executable_path=geckodriver_path, env=env)
+		self.driver = webdriver.Firefox(service=service, options=options)
 
 
 		self.wait = WebDriverWait(self.driver, 12)

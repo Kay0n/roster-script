@@ -4,25 +4,19 @@
 
   dotenv.disableHint = true;
 
+  # Python packages come from nixpkgs (not pip) so they're pinned by devenv.lock
   languages.python = {
     enable = true;
-    package = pkgs.python313;
-    venv = {
-      enable = true;
-      requirements = ''
-        openpyxl
-        numpy
-        selenium
-        keyboard
-        pytest
-        python-dotenv
-        pynput
-      '';
-    };
+    package = pkgs.python313.withPackages (ps: [
+      ps.openpyxl
+      ps.selenium
+      ps.pytest
+      ps.python-dotenv
+    ]);
   };
 
   packages = [
-    pkgs.python313Packages.pynput
+    pkgs.firefox
     pkgs.geckodriver
   ];
 
