@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "cwd": "${workspaceFolder}/src",
+            "cwd": "${workspaceFolder}",
             "python": "${workspaceFolder}/.venv-x86_64-linux/bin/python"
             // "python": "${env:VENVDIR}/bin/python"
 

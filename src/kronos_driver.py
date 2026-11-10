@@ -5,10 +5,12 @@
 import os
 import shutil
 import time
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
@@ -17,11 +19,53 @@ from selenium.webdriver.support import expected_conditions as condition
 from selenium.webdriver.support.wait import WebDriverWait
 
 import config
-from models import PayCodeEntry, RosterEntry, Shift
+from models import PayCode, PayCodeEntry, RosterEntry, Shift
 
 
 JS_FILE = Path(__file__).parent / "js" / "kronos.js"
 GRID_ID = "krnScheduleGrid_schedule_by_employee"
+
+# rosterTool.addPayCode returns a Promise; pass its outcome back to Selenium's async callback
+ADD_PAYCODE_SCRIPT = """
+const done = arguments[arguments.length - 1];
+rosterTool.addPayCode(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4])
+    .then(result => done({ok: true, fellBack: result.fellBack}))
+    .catch(error => done({ok: false, error: rosterTool.describeError(error)}));
+"""
+
+
+class KronosError(Exception):
+    pass
+
+
+@dataclass
+class AddReport:
+    added: list[RosterEntry] = field(default_factory=list)
+    fell_back: list[PayCodeEntry] = field(default_factory=list)  # also in added
+    failed: list[tuple[RosterEntry, str]] = field(default_factory=list)
+    unknown_employees: list[str] = field(default_factory=list)
+
+    def print_summary(self):
+        print(f"Added {len(self.added)} entries, {len(self.failed)} failed")
+
+        if self.fell_back:
+            print(f"Overdrawn, added as {config.FALLBACK_PAYCODE.name} instead:")
+            for entry in self.fell_back:
+                print(f"    {entry.employee_name}: {entry}")
+
+        if self.failed:
+            print("Failed:")
+            for entry, error in self.failed:
+                print(f"    {entry.employee_name}: {entry}: {error}")
+
+        if self.unknown_employees:
+            print("Skipped, not found in Kronos:")
+            for name in self.unknown_employees:
+                print(f"    {name}")
+
+
+def _paycode_arg(paycode: PayCode) -> dict[str, str | int]:
+    return {"id": paycode.id, "name": paycode.name}
 
 
 def _create_firefox(use_proxy: bool, proxy_port: int) -> webdriver.Firefox:
@@ -77,41 +121,60 @@ class KronosDriver:
 
     def get_employee_ids(self) -> dict[str, int]:
         """Kronos employee name -> employee id, for everyone in the loaded schedule."""
-        employees = self.driver.execute_script("return window.getEmployees();")
+        employees = self.driver.execute_script("return rosterTool.getEmployees();")
         return {e["1"]: e["Id"] for e in employees}
 
-    def add_entries_to_schedule(self, entries: dict[str, list[RosterEntry]]):
+    def add_entries_to_schedule(self, entries: dict[str, list[RosterEntry]]) -> AddReport:
         """Add every entry to the schedule grid, skipping employees Kronos doesn't know. Doesn't save."""
         employee_ids = self.get_employee_ids()
+        report = AddReport()
 
         for employee_name, employee_entries in entries.items():
             employee_id = employee_ids.get(employee_name)
             if not employee_id:
+                report.unknown_employees.append(employee_name)
                 continue
 
             for entry in employee_entries:
-                if isinstance(entry, Shift):
-                    self.add_shift(employee_id, entry)
-                    print(f"Added shift {entry.time_range} for {employee_name}:{employee_id} on {entry.date}")
-                else:
-                    self.add_paycode(employee_id, entry)
-                    print(f"Added paycode {entry.paycode.name} ({entry.hours}h) for {employee_name} on {entry.date}")
+                try:
+                    if isinstance(entry, Shift):
+                        self.add_shift(employee_id, entry)
+                    elif self.add_paycode(employee_id, entry):
+                        report.fell_back.append(entry)
+                    report.added.append(entry)
+                    print(f"Added {entry} for {employee_name}:{employee_id}")
+                except KronosError as e:
+                    report.failed.append((entry, str(e)))
+                    print(f"FAILED {entry} for {employee_name}:{employee_id}: {e}")
                 time.sleep(0.6)
 
             time.sleep(1.0)
 
-    def add_shift(self, employee_id: int, shift: Shift):
-        self.driver.execute_script(
-            "addShift(arguments[0], arguments[1], arguments[2]);",
-            employee_id, shift.date, shift.time_range,
-        )
+        return report
 
-    def add_paycode(self, employee_id: int, entry: PayCodeEntry):
-        paycode_obj = {"id": entry.paycode.id, "name": entry.paycode.name}
-        self.driver.execute_script(
-            "addPayCode(arguments[0], arguments[1], arguments[2], arguments[3]);",
-            employee_id, entry.date, paycode_obj, entry.hours,
-        )
+    def add_shift(self, employee_id: int, shift: Shift):
+        try:
+            self.driver.execute_script(
+                "rosterTool.addShift(arguments[0], arguments[1], arguments[2]);",
+                employee_id, shift.date.isoformat(), shift.time_range,
+            )
+        except WebDriverException as e:
+            raise KronosError(e.msg) from e
+
+    def add_paycode(self, employee_id: int, entry: PayCodeEntry) -> bool:
+        """Returns True if Kronos rejected the paycode as overdrawn and the fallback paycode was used."""
+        try:
+            result = self.driver.execute_async_script(
+                ADD_PAYCODE_SCRIPT,
+                employee_id, entry.date.isoformat(), _paycode_arg(entry.paycode), entry.hours,
+                _paycode_arg(config.FALLBACK_PAYCODE),
+            )
+        except WebDriverException as e:
+            raise KronosError(e.msg) from e
+
+        if not result["ok"]:
+            raise KronosError(result["error"])
+        return result["fellBack"]
 
     # --- Navigation steps ---
 

@@ -1,15 +1,13 @@
+import re
 from dataclasses import dataclass
-from datetime import date
 
 from models import PayCode
 
 
-# --- Run settings ---
+# --- Run settings (defaults for the command line options in main.py) ---
 
 USE_PROXY = False  # ssh -N -D 8080 kayon@refract.online
 PROXY_PORT = 8080
-START_DATE = date(2026, 11, 2)
-END_DATE = date(2026, 11, 29)
 START_DAY_OFFSET = 0
 
 KRONOS_URL = "https://kronos.calvarycare.org.au/"
@@ -26,8 +24,13 @@ class SheetLayout:
     date_row: int
     first_employee_row: int
     first_day_col: int
-    last_day_col: int  # first_day_col + 28
+    last_day_col: int  # first_day_col + 28 (28 days + spacer)
     spacer_col: int  # empty column between the two fortnights
+
+    @property
+    def day_cols(self) -> list[int]:
+        """One column per roster day, in order, without the spacer."""
+        return [c for c in range(self.first_day_col, self.last_day_col + 1) if c != self.spacer_col]
 
 
 ICU_LAYOUT = SheetLayout(
@@ -88,8 +91,11 @@ PAYCODES: dict[str, PayCode] = {
 }
 
 
-# TODO: Globbing
-IGNORED_CELL_VALUES = [
+# Used when paycode is overdrawn
+FALLBACK_PAYCODE = PAYCODES["LWOP"]
+
+
+IGNORED_CELL_VALUES = {
     "O",
     "E/NRM",
     "L/NRM",
@@ -98,18 +104,12 @@ IGNORED_CELL_VALUES = [
     "NRM",
     "NA",
     "UNI",
-
-    "WK3", # glob (WK1, WK2 etc)
-    "WK11",
-    "WK13",
-    "WK15",
-    "WK17",
-
     "LSL",
+    "M/L",
+    "RPH",
+}
 
-    "ML" # glob (ML/11.5, ML/7.5)
-    "MLUP" # glob
-    "M/L"
-    "ML/11.5"
-    "RPH"
+IGNORED_CELL_PATTERNS = [
+    re.compile(r"^WK\d+$"),          # WK1, WK11, ...
+    re.compile(r"^ML(UP)?(/.*)?$"),  # ML, MLUP, ML/11.5, ML/7.5, ...
 ]

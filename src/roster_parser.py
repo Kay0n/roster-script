@@ -3,7 +3,8 @@
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
+from typing import Protocol
 
 import config
 from config import SheetLayout
@@ -13,6 +14,12 @@ from models import PayCodeEntry, RosterEntry, Shift
 
 TIME_RANGE_REGEX = re.compile(r"^\d{4}-\d{4}$")  # nnnn-nnnn, n = digit
 MAX_ROW = 300
+
+
+class Sheet(Protocol):
+    """What the parser needs from a workbook; lets tests pass a fake."""
+    def get_cell_value(self, row: int, col: int) -> object: ...
+    def get_cell_text(self, row: int, col: int) -> str: ...
 
 
 @dataclass
@@ -27,7 +34,7 @@ class ParsedRoster:
 
     def print_summary(self, employee_ids: dict[str, int]):
         print("Roster ingestion complete")
-        print(f"Processed {self.entry_count} shifts from {self.employees_processed} employees")
+        print(f"Processed {self.entry_count} entries from {self.employees_processed} employees")
         print("Unknown Symbols:")
         print(self.unknown_symbols)
 
@@ -36,30 +43,57 @@ class ParsedRoster:
             if name not in employee_ids:
                 print(name)
 
-
-def load_roster(layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
-    workbook = ExcelWorkbook(find_roster_file(), layout.sheet_name)
-    return parse_roster(workbook, layout, start_day_offset)
+    def print_entries(self):
+        for name, entries in self.entries.items():
+            print(name)
+            for entry in entries:
+                print(f"    {entry}")
 
 
 def find_roster_file() -> str:
-    cwd = os.getcwd()
-    for file in os.listdir(cwd):
-        if file.endswith(".xlsx"):
-            return os.path.join(cwd, file)
-    return ""
+    """The single .xlsx in the current directory."""
+    xlsx_files = sorted(f for f in os.listdir() if f.endswith(".xlsx"))
+    if len(xlsx_files) != 1:
+        raise FileNotFoundError(
+            f"Expected exactly one .xlsx in {os.getcwd()}, found {xlsx_files or 'none'}. Pass one with --file."
+        )
+    return os.path.abspath(xlsx_files[0])
 
 
-def date_cell_to_iso(cell_text: str) -> str:
-    return datetime.strptime(cell_text, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+def load_roster(file_path: str, layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
+    return parse_roster(ExcelWorkbook(file_path, layout.sheet_name), layout, start_day_offset)
 
 
-def parse_cell(employee_name: str, date_str: str, cell_text: str) -> RosterEntry | None:
+def read_date_range(file_path: str, layout: SheetLayout) -> tuple[date, date]:
+    """First and last day of the roster period, from the date row."""
+    workbook = ExcelWorkbook(file_path, layout.sheet_name)
+    return (
+        read_date(workbook, layout.date_row, layout.day_cols[0]),
+        read_date(workbook, layout.date_row, layout.day_cols[-1]),
+    )
+
+
+def read_date(sheet: Sheet, row: int, col: int) -> date:
+    value = sheet.get_cell_value(row, col)
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    raise ValueError(f"Expected a date at row {row}, col {col}, found {value!r}")
+
+
+def is_ignored(cell_text: str) -> bool:
+    return cell_text in config.IGNORED_CELL_VALUES or any(
+        pattern.match(cell_text) for pattern in config.IGNORED_CELL_PATTERNS
+    )
+
+
+def parse_cell(employee_name: str, day: date, cell_text: str) -> RosterEntry | None:
     if cell_text in config.SHIFT_TIMES:
-        return Shift(employee_name, date_str, config.SHIFT_TIMES[cell_text])
+        return Shift(employee_name, day, config.SHIFT_TIMES[cell_text])
 
     if TIME_RANGE_REGEX.match(cell_text):
-        return Shift(employee_name, date_str, cell_text)
+        return Shift(employee_name, day, cell_text)
 
     paycode_split = cell_text.split("/", 1)
     code = paycode_split[0].strip()
@@ -73,23 +107,20 @@ def parse_cell(employee_name: str, date_str: str, cell_text: str) -> RosterEntry
         except ValueError:
             raise Exception(f"Invalid hours value '{paycode_split[1]}' for paycode '{code}'")
 
-        return PayCodeEntry(employee_name, date_str, config.PAYCODES[code], hours)
+        return PayCodeEntry(employee_name, day, config.PAYCODES[code], hours)
 
     return None
 
 
-def parse_roster(workbook: ExcelWorkbook, layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
+def parse_roster(sheet: Sheet, layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
     roster = ParsedRoster()
-
-    start_day_col = layout.first_day_col + start_day_offset
-    if start_day_col > 22:
-        start_day_col += 1  # account for spacer column
+    day_cols = layout.day_cols[start_day_offset:]
 
     for row in range(layout.first_employee_row, MAX_ROW):
-        employee_name = workbook.get_cell_text(row, layout.kronos_name_col).strip()
+        employee_name = sheet.get_cell_text(row, layout.kronos_name_col).strip()
         if not employee_name:
             continue
-        if workbook.get_cell_text(row, layout.exclude_marker_col).strip().lower() == "x":
+        if sheet.get_cell_text(row, layout.exclude_marker_col).strip().lower() == "x":
             continue
 
         print(f"Processing row {row}: '{employee_name}'")
@@ -97,16 +128,13 @@ def parse_roster(workbook: ExcelWorkbook, layout: SheetLayout, start_day_offset:
 
         entries: list[RosterEntry] = []
 
-        for col in range(start_day_col, layout.last_day_col + 1):
-            if col == layout.spacer_col:
+        for col in day_cols:
+            cell_text = sheet.get_cell_text(row, col).strip()
+            if not cell_text or is_ignored(cell_text):
                 continue
 
-            cell_text = workbook.get_cell_text(row, col).strip()
-            if not cell_text or cell_text in config.IGNORED_CELL_VALUES:
-                continue
-
-            date_str = date_cell_to_iso(workbook.get_cell_text(layout.date_row, col))
-            entry = parse_cell(employee_name, date_str, cell_text)
+            day = read_date(sheet, layout.date_row, col)
+            entry = parse_cell(employee_name, day, cell_text)
 
             if entry:
                 entries.append(entry)
