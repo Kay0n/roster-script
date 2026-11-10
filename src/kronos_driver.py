@@ -1,167 +1,196 @@
-## pyright: reportUnusedVariable=false
+"""Everything that touches the Kronos web app: browser setup, navigation and the injected JS."""
+
 # pyright: reportUnknownMemberType=false
-## pyright: reportUnusedImport=false
-## pyright: reportUnusedFunction=false
 
-
+import os
+import shutil
 import time
 from datetime import date
-import shutil
-import os
+from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as condition
-from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as condition
+from selenium.webdriver.support.wait import WebDriverWait
+
+import config
+from models import PayCodeShift, RosterEntry, Shift
 
 
-
-class RosterSelenium():
-
-	def __init__(self):
-		self.driver: WebDriver | None = None
-		self.wait: WebDriverWait[WebDriver] | None = None
-
-	def setup_driver(self, use_proxy: bool=False, proxy_port: int=8080):
-		options = Options()
-		options.page_load_strategy = 'normal'  
-		options.set_preference("browser.tabs.remote.autostart", False)
-		options.set_preference("browser.tabs.remote.autostart.2", False)
-
-		firefox_profile = webdriver.FirefoxProfile()
+JS_FILE = Path(__file__).parent / "js" / "kronos.js"
+GRID_ID = "krnScheduleGrid_schedule_by_employee"
 
 
+def _create_firefox(use_proxy: bool, proxy_port: int) -> webdriver.Firefox:
+    options = Options()
+    options.page_load_strategy = "normal"
+    options.set_preference("browser.tabs.remote.autostart", False)
+    options.set_preference("browser.tabs.remote.autostart.2", False)
 
-		if use_proxy:
-			firefox_profile.set_preference("network.proxy.type", 1)  # 1 = manual proxy configuration
-			firefox_profile.set_preference("network.proxy.socks", "localhost")  
-			firefox_profile.set_preference("network.proxy.socks_port", proxy_port)  
-			firefox_profile.set_preference("network.proxy.socks_version", 5)
+    firefox_profile = webdriver.FirefoxProfile()
+    if use_proxy:
+        firefox_profile.set_preference("network.proxy.type", 1)  # 1 = manual proxy configuration
+        firefox_profile.set_preference("network.proxy.socks", "localhost")
+        firefox_profile.set_preference("network.proxy.socks_port", proxy_port)
+        firefox_profile.set_preference("network.proxy.socks_version", 5)
+    options.profile = firefox_profile
 
-		options.profile = firefox_profile
+    # Use geckodriver from PATH so Selenium Manager doesn't download a non-Nix Firefox
+    geckodriver_path = shutil.which("geckodriver")
+    if not geckodriver_path:
+        raise FileNotFoundError("geckodriver not found in PATH")
+    firefox_path = shutil.which("firefox")
+    if not firefox_path:
+        raise FileNotFoundError("firefox not found in PATH")
+    options.binary_location = firefox_path
 
-		# Use geckodriver from PATH so Selenium Manager doesn't download a non-Nix Firefox
-		geckodriver_path = shutil.which("geckodriver")
-		if not geckodriver_path:
-			raise FileNotFoundError("geckodriver not found in PATH")
-		firefox_path = shutil.which("firefox")
-		if not firefox_path:
-			raise FileNotFoundError("firefox not found in PATH")
-		options.binary_location = firefox_path
-
-		# devenv's python sets LD_LIBRARY_PATH to its pinned libstdc++, which breaks the system Firefox
-		env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
-		service = Service(executable_path=geckodriver_path, env=env)
-		self.driver = webdriver.Firefox(service=service, options=options)
-
-
-		self.wait = WebDriverWait(self.driver, 12)
-		self.driver.implicitly_wait(12)
-		self.vars = {}
-	
-
-	def teardown_driver(self):
-		self.driver.quit()
+    # devenv's python sets LD_LIBRARY_PATH to its pinned libstdc++, which breaks the system Firefox
+    env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
+    service = Service(executable_path=geckodriver_path, env=env)
+    return webdriver.Firefox(service=service, options=options)
 
 
-	def wait_and_click(self, selector: tuple[str, str]):
-		clickable_element = self.wait.until(condition.element_to_be_clickable(selector))
-		clickable_element.click()
-	
+class KronosDriver:
 
-	def js_click(self, selector: tuple[str, str]):
-		element: WebElement = self.driver.find_element(selector[0], selector[1])
-		self.driver.execute_script("arguments[0].click();", element)
+    def __init__(self, use_proxy: bool = False, proxy_port: int = 8080):
+        self.driver = _create_firefox(use_proxy, proxy_port)
+        self.wait = WebDriverWait(self.driver, 12)
+        self.driver.implicitly_wait(12)
 
+    def quit(self):
+        self.driver.quit()
 
-	def set_kronos_frame(self, timeout: int = 20):
+    # --- High level ---
 
-		self.driver.switch_to.default_content()
+    def open_schedule(self, user: str, password: str, start_date: date, end_date: date):
+        """Log in, open the ICU schedule for the date range and inject the helper JS."""
+        self.login(user, password)
+        self.select_schedule_hyperfind()
+        time.sleep(9)
+        self.select_date(start_date, end_date)
+        time.sleep(6)
+        self.set_kronos_frame()
+        self.inject_js()
 
-		iframes = self.driver.find_elements(By.CSS_SELECTOR, "iframe.krn-widget-iframe")
-		if not iframes:
-			print("No .krn-widget-iframe elements found")
-			return False
+    def get_employee_ids(self) -> dict[str, int]:
+        """Kronos employee name -> employee id, for everyone in the loaded schedule."""
+        employees = self.driver.execute_script("return window.getEmployees();")
+        return {e["1"]: e["Id"] for e in employees}
 
-		for _, iframe in enumerate(iframes):
-			src = iframe.get_attribute("src") or ""
-			if "schedule" not in src.lower():
-				continue
+    def upload_entries(self, entries: dict[str, list[RosterEntry]]):
+        """Add every entry to the schedule, skipping employees Kronos doesn't know."""
+        employee_ids = self.get_employee_ids()
 
-			self.driver.switch_to.frame(iframe)
+        for employee_name, employee_shifts in entries.items():
+            employee_id = employee_ids.get(employee_name)
+            if not employee_id:
+                continue
 
-			try:
-				WebDriverWait(self.driver, timeout).until(
-					lambda d: d.execute_script("return typeof window.Ext !== 'undefined';")
-				)
-			except Exception:
-				print("ExtJS not found in this iframe")
-				self.driver.switch_to.default_content()
-				continue
+            for shift in employee_shifts:
+                if isinstance(shift, Shift):
+                    self.add_shift(employee_id, shift)
+                    print(f"Added shift {shift.shift_string} for {employee_name}:{employee_id} on {shift.date}")
+                else:
+                    self.add_paycode(employee_id, shift)
+                    print(f"Added paycode {shift.paycode.name} ({shift.hours}h) for {employee_name} on {shift.date}")
+                time.sleep(0.6)
 
-			try:
-				WebDriverWait(self.driver, timeout).until(
-					lambda d: d.execute_script(
-						"return !!Ext.getCmp('krnScheduleGrid_schedule_by_employee');"
-					)
-				)
-				return True
-			except Exception:
-				print("Grid not found in this iframe")
-				self.driver.switch_to.default_content()
+            time.sleep(1.0)
 
-		print("No matching schedule iframe found")
-		return False
-	
-	
-	def login(self, user: str, password: str):
-		self.driver.get("https://kronos.calvarycare.org.au/")
-		self.driver.set_window_size(1920, 1048)
- 
-		self.driver.find_element(By.ID, "userNameInput").click()
-		self.driver.find_element(By.ID, "userNameInput").send_keys(user)
-		self.driver.find_element(By.ID, "passwordInput").send_keys(password)
-		self.driver.find_element(By.ID, "submitButton").click()
+    def add_shift(self, employee_id: int, shift: Shift):
+        self.driver.execute_script(
+            "addShift(arguments[0], arguments[1], arguments[2]);",
+            employee_id, shift.date, shift.shift_string,
+        )
 
-		
-	def select_schedule_hyperfind(self):
-		self.driver.find_element(By.XPATH, "//li[6]/div/div/span[2]").click()
-		self.driver.switch_to.frame(1)
-		time.sleep(6) # stops page hang
-		self.js_click((By.ID, "hyperfindIcon"))
-		self.js_click((By.XPATH, "//section[2]/header/a/span"))
-		self.js_click((By.LINK_TEXT, "CAH-C9430-ICU"))
+    def add_paycode(self, employee_id: int, shift: PayCodeShift):
+        paycode_obj = {"id": shift.paycode.id, "name": shift.paycode.name}
+        self.driver.execute_script(
+            "addPayCode(arguments[0], arguments[1], arguments[2], arguments[3]);",
+            employee_id, shift.date, paycode_obj, shift.hours,
+        )
 
+    # --- Navigation steps ---
 
-	def convert_date(self, date_obj: date) -> str:
-		return date_obj.strftime("%d%m%Y")
-	
+    def login(self, user: str, password: str):
+        self.driver.get(config.KRONOS_URL)
+        self.driver.set_window_size(1920, 1048)
 
-	def select_date(self, date1: date, date2: date):
-		self.js_click((By.XPATH, "//div[2]/button/i"))
-		self.driver.find_element(By.XPATH, "//span/div/input").send_keys(self.convert_date(date1))
-		self.driver.find_element(By.XPATH, "//span[2]/div/div/div/span/div/input").send_keys(self.convert_date(date2))
-		self.wait_and_click((By.XPATH, "//button[2]/span"))
+        self.driver.find_element(By.ID, "userNameInput").click()
+        self.driver.find_element(By.ID, "userNameInput").send_keys(user)
+        self.driver.find_element(By.ID, "passwordInput").send_keys(password)
+        self.driver.find_element(By.ID, "submitButton").click()
 
+    def select_schedule_hyperfind(self):
+        self.driver.find_element(By.XPATH, "//li[6]/div/div/span[2]").click()
+        self.driver.switch_to.frame(1)
+        time.sleep(6)  # stops page hang
+        self._js_click((By.ID, "hyperfindIcon"))
+        self._js_click((By.XPATH, "//section[2]/header/a/span"))
+        self._js_click((By.LINK_TEXT, config.HYPERFIND_NAME))
 
+    def select_date(self, start_date: date, end_date: date):
+        self._js_click((By.XPATH, "//div[2]/button/i"))
+        self.driver.find_element(By.XPATH, "//span/div/input").send_keys(start_date.strftime("%d%m%Y"))
+        self.driver.find_element(By.XPATH, "//span[2]/div/div/div/span/div/input").send_keys(end_date.strftime("%d%m%Y"))
+        self._wait_and_click((By.XPATH, "//button[2]/span"))
 
+    def set_kronos_frame(self, timeout: int = 20) -> bool:
+        """Switch into the iframe that holds the ExtJS schedule grid."""
+        self.driver.switch_to.default_content()
 
+        iframes = self.driver.find_elements(By.CSS_SELECTOR, "iframe.krn-widget-iframe")
+        if not iframes:
+            print("No .krn-widget-iframe elements found")
+            return False
 
+        for iframe in iframes:
+            src = iframe.get_attribute("src") or ""
+            if "schedule" not in src.lower():
+                continue
 
+            self.driver.switch_to.frame(iframe)
 
+            try:
+                WebDriverWait(self.driver, timeout).until(
+                    lambda d: d.execute_script("return typeof window.Ext !== 'undefined';")
+                )
+            except Exception:
+                print("ExtJS not found in this iframe")
+                self.driver.switch_to.default_content()
+                continue
 
+            try:
+                WebDriverWait(self.driver, timeout).until(
+                    lambda d: d.execute_script(f"return !!Ext.getCmp('{GRID_ID}');")
+                )
+                return True
+            except Exception:
+                print("Grid not found in this iframe")
+                self.driver.switch_to.default_content()
 
+        print("No matching schedule iframe found")
+        return False
 
+    def inject_js(self):
+        self.driver.execute_script(
+            """
+            var script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.text = arguments[0];
+            document.documentElement.appendChild(script);
+            """,
+            JS_FILE.read_text(encoding="utf-8"),
+        )
 
+    # --- Helpers ---
 
+    def _wait_and_click(self, selector: tuple[str, str]):
+        self.wait.until(condition.element_to_be_clickable(selector)).click()
 
-
-
-
-
-
-	
+    def _js_click(self, selector: tuple[str, str]):
+        element: WebElement = self.driver.find_element(*selector)
+        self.driver.execute_script("arguments[0].click();", element)
