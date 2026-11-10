@@ -11,15 +11,15 @@ class PayCode:
 class Shift:
     employee_name: str
     date: str  # 'YYYY-MM-DD'
-    shift_string: str  # 'nnnn-nnnn'
+    time_range: str  # 'nnnn-nnnn'
 
 
 @dataclass
-class PayCodeShift:
+class PayCodeEntry:
     employee_name: str
     date: str  # 'YYYY-MM-DD'
     paycode: PayCode
     hours: float
 
 
-RosterEntry = Shift | PayCodeShift
+RosterEntry = Shift | PayCodeEntry

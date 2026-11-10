@@ -25,13 +25,13 @@ def main():
 
     input("Press ENTER to ingest excel...")
     while True:
-        roster = load_roster(config.ICU_LAYOUT, config.DAY_OFFSET)
+        roster = load_roster(config.ICU_LAYOUT, config.START_DAY_OFFSET)
         roster.print_summary(kronos.get_employee_ids())
         if input("Press ENTER to continue, press SPACE then ENTER to reingest") != " ":
             break
 
     input("Press ENTER to upload shifts...")
-    kronos.upload_entries(roster.entries)
+    kronos.add_entries_to_schedule(roster.entries)
 
     input("Press ENTER to finish...")
 

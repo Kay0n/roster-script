@@ -10,7 +10,7 @@ USE_PROXY = False  # ssh -N -D 8080 kayon@refract.online
 PROXY_PORT = 8080
 START_DATE = date(2026, 11, 2)
 END_DATE = date(2026, 11, 29)
-DAY_OFFSET = 0
+START_DAY_OFFSET = 0
 
 KRONOS_URL = "https://kronos.calvarycare.org.au/"
 HYPERFIND_NAME = "CAH-C9430-ICU"
@@ -22,23 +22,23 @@ HYPERFIND_NAME = "CAH-C9430-ICU"
 class SheetLayout:
     sheet_name: str
     kronos_name_col: int
-    x_check_col: int
+    exclude_marker_col: int
     date_row: int
     first_employee_row: int
     first_day_col: int
     last_day_col: int  # first_day_col + 28
-    buffer_col: int
+    spacer_col: int  # empty column between the two fortnights
 
 
 ICU_LAYOUT = SheetLayout(
     sheet_name="ICU-HDU",
     kronos_name_col=37,
-    x_check_col=38,
+    exclude_marker_col=38,
     date_row=2,
     first_employee_row=3,
     first_day_col=8,
     last_day_col=36,
-    buffer_col=22,
+    spacer_col=22,
 )
 
 
@@ -89,7 +89,7 @@ PAYCODES: dict[str, PayCode] = {
 
 
 # TODO: Globbing
-SKIP_VALUES = [
+IGNORED_CELL_VALUES = [
     "O",
     "E/NRM",
     "L/NRM",

@@ -8,5 +8,5 @@ class ExcelWorkbook:
         self.workbook = load_workbook(filename=file_path, data_only=True)
         self.sheet: Worksheet = self.workbook[sheet_name]
 
-    def get_cell(self, row: int, col: int) -> str:
+    def get_cell_text(self, row: int, col: int) -> str:
         return str(self.sheet.cell(row=row, column=col).value or "")

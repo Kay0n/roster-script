@@ -1,4 +1,4 @@
-"""Reads the roster spreadsheet into Shift / PayCodeShift entries. No browser code here."""
+"""Reads the roster spreadsheet into Shift / PayCodeEntry entries. No browser code here."""
 
 import os
 import re
@@ -8,18 +8,18 @@ from datetime import datetime
 import config
 from config import SheetLayout
 from excel_workbook import ExcelWorkbook
-from models import PayCodeShift, RosterEntry, Shift
+from models import PayCodeEntry, RosterEntry, Shift
 
 
-TIMECODE_REGEX = re.compile(r"^\d{4}-\d{4}$")  # nnnn-nnnn, n = digit
-LAST_ROW = 300
+TIME_RANGE_REGEX = re.compile(r"^\d{4}-\d{4}$")  # nnnn-nnnn, n = digit
+MAX_ROW = 300
 
 
 @dataclass
-class ParseResult:
+class ParsedRoster:
     entries: dict[str, list[RosterEntry]] = field(default_factory=dict)  # employee name -> entries
     unknown_symbols: set[str] = field(default_factory=set)
-    employee_count: int = 0
+    employees_processed: int = 0
 
     @property
     def entry_count(self) -> int:
@@ -27,22 +27,22 @@ class ParseResult:
 
     def print_summary(self, employee_ids: dict[str, int]):
         print("Roster ingestion complete")
-        print(f"Processed {self.entry_count} shifts from {self.employee_count} employees")
+        print(f"Processed {self.entry_count} shifts from {self.employees_processed} employees")
         print("Unknown Symbols:")
         print(self.unknown_symbols)
 
-        print("Invalid Employees:")
+        print("Employees not found in Kronos:")
         for name in self.entries:
             if name not in employee_ids:
                 print(name)
 
 
-def load_roster(layout: SheetLayout, day_offset: int = 0) -> ParseResult:
-    workbook = ExcelWorkbook(find_xlsx_path(), layout.sheet_name)
-    return parse_roster(workbook, layout, day_offset)
+def load_roster(layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
+    workbook = ExcelWorkbook(find_roster_file(), layout.sheet_name)
+    return parse_roster(workbook, layout, start_day_offset)
 
 
-def find_xlsx_path() -> str:
+def find_roster_file() -> str:
     cwd = os.getcwd()
     for file in os.listdir(cwd):
         if file.endswith(".xlsx"):
@@ -50,19 +50,18 @@ def find_xlsx_path() -> str:
     return ""
 
 
-def parse_date(date: str) -> str:
-    date_dt = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
-    return date_dt.strftime("%Y-%m-%d")
+def date_cell_to_iso(cell_text: str) -> str:
+    return datetime.strptime(cell_text, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
 
 
-def parse_shift(employee_name: str, date_str: str, cell_content: str) -> RosterEntry | None:
-    if cell_content in config.SHIFT_TIMES:
-        return Shift(employee_name, date_str, config.SHIFT_TIMES[cell_content])
+def parse_cell(employee_name: str, date_str: str, cell_text: str) -> RosterEntry | None:
+    if cell_text in config.SHIFT_TIMES:
+        return Shift(employee_name, date_str, config.SHIFT_TIMES[cell_text])
 
-    if TIMECODE_REGEX.match(cell_content):
-        return Shift(employee_name, date_str, cell_content)
+    if TIME_RANGE_REGEX.match(cell_text):
+        return Shift(employee_name, date_str, cell_text)
 
-    paycode_split = cell_content.split("/", 1)
+    paycode_split = cell_text.split("/", 1)
     code = paycode_split[0].strip()
 
     if code in config.PAYCODES:
@@ -74,49 +73,49 @@ def parse_shift(employee_name: str, date_str: str, cell_content: str) -> RosterE
         except ValueError:
             raise Exception(f"Invalid hours value '{paycode_split[1]}' for paycode '{code}'")
 
-        return PayCodeShift(employee_name, date_str, config.PAYCODES[code], hours)
+        return PayCodeEntry(employee_name, date_str, config.PAYCODES[code], hours)
 
     return None
 
 
-def parse_roster(workbook: ExcelWorkbook, layout: SheetLayout, day_offset: int = 0) -> ParseResult:
-    result = ParseResult()
+def parse_roster(workbook: ExcelWorkbook, layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
+    roster = ParsedRoster()
 
-    start_day_col = layout.first_day_col + day_offset
+    start_day_col = layout.first_day_col + start_day_offset
     if start_day_col > 22:
-        start_day_col += 1  # account for buffer
+        start_day_col += 1  # account for spacer column
 
-    for row in range(layout.first_employee_row, LAST_ROW):
-        employee_name = workbook.get_cell(row, layout.kronos_name_col).strip()
+    for row in range(layout.first_employee_row, MAX_ROW):
+        employee_name = workbook.get_cell_text(row, layout.kronos_name_col).strip()
         if not employee_name:
             continue
-        if workbook.get_cell(row, layout.x_check_col).strip().lower() == "x":
+        if workbook.get_cell_text(row, layout.exclude_marker_col).strip().lower() == "x":
             continue
 
         print(f"Processing row {row}: '{employee_name}'")
-        result.employee_count += 1
+        roster.employees_processed += 1
 
-        shift_list: list[RosterEntry] = []
+        entries: list[RosterEntry] = []
 
         for col in range(start_day_col, layout.last_day_col + 1):
-            if col == layout.buffer_col:
+            if col == layout.spacer_col:
                 continue
 
-            cell_content = workbook.get_cell(row, col).strip()
-            if not cell_content or cell_content in config.SKIP_VALUES:
+            cell_text = workbook.get_cell_text(row, col).strip()
+            if not cell_text or cell_text in config.IGNORED_CELL_VALUES:
                 continue
 
-            date_str = parse_date(workbook.get_cell(layout.date_row, col))
-            shift = parse_shift(employee_name, date_str, cell_content)
+            date_str = date_cell_to_iso(workbook.get_cell_text(layout.date_row, col))
+            entry = parse_cell(employee_name, date_str, cell_text)
 
-            if shift:
-                shift_list.append(shift)
+            if entry:
+                entries.append(entry)
             else:
-                print(f"Skipping unknown cell content: {cell_content} at row {row}, col {col}")
-                result.unknown_symbols.add(cell_content)
+                print(f"Skipping unknown cell content: {cell_text} at row {row}, col {col}")
+                roster.unknown_symbols.add(cell_text)
 
-        if shift_list:
-            result.entries[employee_name] = shift_list
+        if entries:
+            roster.entries[employee_name] = entries
 
-    result.entries = dict(sorted(result.entries.items()))
-    return result
+    roster.entries = dict(sorted(roster.entries.items()))
+    return roster

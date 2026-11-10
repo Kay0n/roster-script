@@ -17,7 +17,7 @@ from selenium.webdriver.support import expected_conditions as condition
 from selenium.webdriver.support.wait import WebDriverWait
 
 import config
-from models import PayCodeShift, RosterEntry, Shift
+from models import PayCodeEntry, RosterEntry, Shift
 
 
 JS_FILE = Path(__file__).parent / "js" / "kronos.js"
@@ -68,11 +68,11 @@ class KronosDriver:
     def open_schedule(self, user: str, password: str, start_date: date, end_date: date):
         """Log in, open the ICU schedule for the date range and inject the helper JS."""
         self.login(user, password)
-        self.select_schedule_hyperfind()
+        self.select_hyperfind()
         time.sleep(9)
-        self.select_date(start_date, end_date)
+        self.select_date_range(start_date, end_date)
         time.sleep(6)
-        self.set_kronos_frame()
+        self.switch_to_schedule_frame()
         self.inject_js()
 
     def get_employee_ids(self) -> dict[str, int]:
@@ -80,22 +80,22 @@ class KronosDriver:
         employees = self.driver.execute_script("return window.getEmployees();")
         return {e["1"]: e["Id"] for e in employees}
 
-    def upload_entries(self, entries: dict[str, list[RosterEntry]]):
-        """Add every entry to the schedule, skipping employees Kronos doesn't know."""
+    def add_entries_to_schedule(self, entries: dict[str, list[RosterEntry]]):
+        """Add every entry to the schedule grid, skipping employees Kronos doesn't know. Doesn't save."""
         employee_ids = self.get_employee_ids()
 
-        for employee_name, employee_shifts in entries.items():
+        for employee_name, employee_entries in entries.items():
             employee_id = employee_ids.get(employee_name)
             if not employee_id:
                 continue
 
-            for shift in employee_shifts:
-                if isinstance(shift, Shift):
-                    self.add_shift(employee_id, shift)
-                    print(f"Added shift {shift.shift_string} for {employee_name}:{employee_id} on {shift.date}")
+            for entry in employee_entries:
+                if isinstance(entry, Shift):
+                    self.add_shift(employee_id, entry)
+                    print(f"Added shift {entry.time_range} for {employee_name}:{employee_id} on {entry.date}")
                 else:
-                    self.add_paycode(employee_id, shift)
-                    print(f"Added paycode {shift.paycode.name} ({shift.hours}h) for {employee_name} on {shift.date}")
+                    self.add_paycode(employee_id, entry)
+                    print(f"Added paycode {entry.paycode.name} ({entry.hours}h) for {employee_name} on {entry.date}")
                 time.sleep(0.6)
 
             time.sleep(1.0)
@@ -103,14 +103,14 @@ class KronosDriver:
     def add_shift(self, employee_id: int, shift: Shift):
         self.driver.execute_script(
             "addShift(arguments[0], arguments[1], arguments[2]);",
-            employee_id, shift.date, shift.shift_string,
+            employee_id, shift.date, shift.time_range,
         )
 
-    def add_paycode(self, employee_id: int, shift: PayCodeShift):
-        paycode_obj = {"id": shift.paycode.id, "name": shift.paycode.name}
+    def add_paycode(self, employee_id: int, entry: PayCodeEntry):
+        paycode_obj = {"id": entry.paycode.id, "name": entry.paycode.name}
         self.driver.execute_script(
             "addPayCode(arguments[0], arguments[1], arguments[2], arguments[3]);",
-            employee_id, shift.date, paycode_obj, shift.hours,
+            employee_id, entry.date, paycode_obj, entry.hours,
         )
 
     # --- Navigation steps ---
@@ -124,7 +124,7 @@ class KronosDriver:
         self.driver.find_element(By.ID, "passwordInput").send_keys(password)
         self.driver.find_element(By.ID, "submitButton").click()
 
-    def select_schedule_hyperfind(self):
+    def select_hyperfind(self):
         self.driver.find_element(By.XPATH, "//li[6]/div/div/span[2]").click()
         self.driver.switch_to.frame(1)
         time.sleep(6)  # stops page hang
@@ -132,13 +132,13 @@ class KronosDriver:
         self._js_click((By.XPATH, "//section[2]/header/a/span"))
         self._js_click((By.LINK_TEXT, config.HYPERFIND_NAME))
 
-    def select_date(self, start_date: date, end_date: date):
+    def select_date_range(self, start_date: date, end_date: date):
         self._js_click((By.XPATH, "//div[2]/button/i"))
         self.driver.find_element(By.XPATH, "//span/div/input").send_keys(start_date.strftime("%d%m%Y"))
         self.driver.find_element(By.XPATH, "//span[2]/div/div/div/span/div/input").send_keys(end_date.strftime("%d%m%Y"))
         self._wait_and_click((By.XPATH, "//button[2]/span"))
 
-    def set_kronos_frame(self, timeout: int = 20) -> bool:
+    def switch_to_schedule_frame(self, timeout: int = 20) -> bool:
         """Switch into the iframe that holds the ExtJS schedule grid."""
         self.driver.switch_to.default_content()
 

@@ -101,7 +101,7 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
         const employeeRecord = resourceStore.findRecord('Id', employeeId, 0, false, true, true);
         if (!employeeRecord) return reject(`Employee with ID ${employeeId} not found`);
 
-        const functionArgument = {
+        const pasteRequest = {
             scheduledItem: {
                 amount: hours * 60,
                 payCode: {
@@ -123,9 +123,7 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
             bypassAccrualWarning: false,
         };
 
-        const functionName = 'pastePayCodeEditActionChange';
-
-        const updateExtJsGridVisually = (payCodeName) => {
+        const showPayCodeInGrid = (payCodeName) => {
             const eventStore = rosterGrid.getEventStore ? rosterGrid.getEventStore() : rosterGrid.getStore();
 
             const [year, month, day] = dateString.split('-');
@@ -144,7 +142,7 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
                 label: payCodeName,
                 commentsLabel: "Comments",
                 Cls: "",
-                Dto: functionArgument.scheduledItem
+                Dto: pasteRequest.scheduledItem
             };
 
             const newRecord = Ext.create('krn.Sch.models.EntityItem', payCodeVisualData);
@@ -152,28 +150,28 @@ addPayCode = function(employeeId, dateString, payCodeObject, hours) {
         };
 
 
-        copyPasteService[functionName](functionArgument)
+        copyPasteService.pastePayCodeEditActionChange(pasteRequest)
             .then(response => {
-                updateExtJsGridVisually(payCodeObject.name);
+                showPayCodeInGrid(payCodeObject.name);
                 resolve(response);
             })
             .catch(error => {
-                const is_overdrawn = (error && (error.errorCode === 1401 || error.errorCode === 9));
+                const isOverdrawn = (error && (error.errorCode === 1401 || error.errorCode === 9));
 
-                if (is_overdrawn) {
+                if (isOverdrawn) {
                     console.log(`Overdrawn paycode detected, retrying with UNPAID_PAYCODE...`);
 
                     // use unpaid paycode
-                    functionArgument.scheduledItem.payCode = {
+                    pasteRequest.scheduledItem.payCode = {
                         id: { id: UNPAID_PAYCODE.id },
                         name: UNPAID_PAYCODE.name,
                         type: 1,
                         unit: -1
                     };
 
-                    copyPasteService[functionName](functionArgument)
+                    copyPasteService.pastePayCodeEditActionChange(pasteRequest)
                         .then(response => {
-                            updateExtJsGridVisually(UNPAID_PAYCODE.name);
+                            showPayCodeInGrid(UNPAID_PAYCODE.name);
                             resolve(response);
                         })
                         .catch(retryError => reject(retryError));
