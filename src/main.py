@@ -1,11 +1,13 @@
 import argparse
 import os
+import sys
 
 from dotenv import load_dotenv
 
 import config
 from kronos_driver import KronosDriver
-from roster_parser import find_roster_file, load_roster, read_date_range
+from roster_parser import find_roster_file
+from roster_validation import load_valid_roster
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,7 +36,12 @@ def main():
     user, password = load_credentials()
 
     roster_file = args.file or find_roster_file()
-    start_date, end_date = read_date_range(roster_file, config.ICU_LAYOUT)
+
+    # Check the sheet before opening Kronos, and get the date range from it
+    roster = load_valid_roster(roster_file, config.ICU_LAYOUT, args.start_day_offset)
+    if roster is None:
+        sys.exit("Fix the errors above and run again.")
+    start_date, end_date = roster.start_date, roster.end_date
     print(f"Roster: {roster_file} ({start_date} to {end_date})")
 
     input("Press ENTER to start kronos...")
@@ -43,7 +50,16 @@ def main():
 
     input("Press ENTER to ingest excel...")
     while True:
-        roster = load_roster(roster_file, config.ICU_LAYOUT, args.start_day_offset)
+        roster = load_valid_roster(roster_file, config.ICU_LAYOUT, args.start_day_offset)
+        if roster and (roster.start_date, roster.end_date) != (start_date, end_date):
+            print(f"ERROR: Roster dates changed to {roster.start_date} to {roster.end_date}, "
+                  f"but Kronos is showing {start_date} to {end_date}. Restart to use the new dates.")
+            roster = None
+
+        if roster is None:
+            input("Fix the errors above, then press ENTER to reingest")
+            continue
+
         roster.print_summary(kronos.get_employee_ids())
         if input("Press ENTER to continue, press SPACE then ENTER to reingest") != " ":
             break

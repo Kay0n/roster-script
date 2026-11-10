@@ -2,28 +2,31 @@
 
 import os
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Protocol
 
 import config
 from config import SheetLayout
-from excel_workbook import ExcelWorkbook
 from models import PayCodeEntry, RosterEntry, Shift
 
 
 TIME_RANGE_REGEX = re.compile(r"^\d{4}-\d{4}$")  # nnnn-nnnn, n = digit
-MAX_ROW = 300
 
 
 class Sheet(Protocol):
     """What the parser needs from a workbook; lets tests pass a fake."""
+    @property
+    def max_row(self) -> int: ...
     def get_cell_value(self, row: int, col: int) -> object: ...
     def get_cell_text(self, row: int, col: int) -> str: ...
 
 
 @dataclass
 class ParsedRoster:
+    start_date: date
+    end_date: date
     entries: dict[str, list[RosterEntry]] = field(default_factory=dict)  # employee name -> entries
     unknown_symbols: set[str] = field(default_factory=set)
     employees_processed: int = 0
@@ -60,19 +63,6 @@ def find_roster_file() -> str:
     return os.path.abspath(xlsx_files[0])
 
 
-def load_roster(file_path: str, layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
-    return parse_roster(ExcelWorkbook(file_path, layout.sheet_name), layout, start_day_offset)
-
-
-def read_date_range(file_path: str, layout: SheetLayout) -> tuple[date, date]:
-    """First and last day of the roster period, from the date row."""
-    workbook = ExcelWorkbook(file_path, layout.sheet_name)
-    return (
-        read_date(workbook, layout.date_row, layout.day_cols[0]),
-        read_date(workbook, layout.date_row, layout.day_cols[-1]),
-    )
-
-
 def read_date(sheet: Sheet, row: int, col: int) -> date:
     value = sheet.get_cell_value(row, col)
     if isinstance(value, datetime):
@@ -86,6 +76,15 @@ def is_ignored(cell_text: str) -> bool:
     return cell_text in config.IGNORED_CELL_VALUES or any(
         pattern.match(cell_text) for pattern in config.IGNORED_CELL_PATTERNS
     )
+
+
+def employee_rows(sheet: Sheet, layout: SheetLayout) -> Iterator[tuple[int, str]]:
+    """(row, name) for every row with a Kronos name that isn't marked with an 'x'."""
+    for row in range(layout.first_employee_row, sheet.max_row + 1):
+        name = sheet.get_cell_text(row, layout.kronos_name_col).strip()
+        excluded = sheet.get_cell_text(row, layout.exclude_marker_col).strip().lower() == "x"
+        if name and not excluded:
+            yield row, name
 
 
 def parse_cell(employee_name: str, day: date, cell_text: str) -> RosterEntry | None:
@@ -105,7 +104,7 @@ def parse_cell(employee_name: str, day: date, cell_text: str) -> RosterEntry | N
         try:
             hours = float(paycode_split[1])
         except ValueError:
-            raise Exception(f"Invalid hours value '{paycode_split[1]}' for paycode '{code}'")
+            raise ValueError(f"Invalid hours value '{paycode_split[1]}' for paycode '{code}'")
 
         return PayCodeEntry(employee_name, day, config.PAYCODES[code], hours)
 
@@ -113,16 +112,14 @@ def parse_cell(employee_name: str, day: date, cell_text: str) -> RosterEntry | N
 
 
 def parse_roster(sheet: Sheet, layout: SheetLayout, start_day_offset: int = 0) -> ParsedRoster:
-    roster = ParsedRoster()
+    """Assumes the sheet has passed roster_validation.validate_roster."""
+    roster = ParsedRoster(
+        start_date=read_date(sheet, layout.date_row, layout.day_cols[0]),
+        end_date=read_date(sheet, layout.date_row, layout.day_cols[-1]),
+    )
     day_cols = layout.day_cols[start_day_offset:]
 
-    for row in range(layout.first_employee_row, MAX_ROW):
-        employee_name = sheet.get_cell_text(row, layout.kronos_name_col).strip()
-        if not employee_name:
-            continue
-        if sheet.get_cell_text(row, layout.exclude_marker_col).strip().lower() == "x":
-            continue
-
+    for row, employee_name in employee_rows(sheet, layout):
         print(f"Processing row {row}: '{employee_name}'")
         roster.employees_processed += 1
 

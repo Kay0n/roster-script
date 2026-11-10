@@ -8,7 +8,13 @@ class ExcelWorkbook:
     def __init__(self, file_path: str, sheet_name: str) -> None:
         self.file_path = file_path
         self.workbook = load_workbook(filename=file_path, data_only=True)
+        if sheet_name not in self.workbook.sheetnames:
+            raise ValueError(f"No sheet named {sheet_name!r} in {file_path}. Sheets: {self.workbook.sheetnames}")
         self.sheet: Worksheet = self.workbook[sheet_name]
+
+    @property
+    def max_row(self) -> int:
+        return self.sheet.max_row
 
     def get_cell_value(self, row: int, col: int) -> Any:
         return self.sheet.cell(row=row, column=col).value

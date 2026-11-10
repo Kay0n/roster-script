@@ -24,13 +24,14 @@ class SheetLayout:
     date_row: int
     first_employee_row: int
     first_day_col: int
-    last_day_col: int  # first_day_col + 28 (28 days + spacer)
-    spacer_col: int  # empty column between the two fortnights
+    last_day_col: int  # first_day_col + 28 (28 days + name_repeat_col)
+    name_repeat_col: int  # names column repeated between the two fortnights, not a day
+    name_repeat_header: str  # name col heading in date row
 
     @property
     def day_cols(self) -> list[int]:
-        """One column per roster day, in order, without the spacer."""
-        return [c for c in range(self.first_day_col, self.last_day_col + 1) if c != self.spacer_col]
+        """One column per roster day, in order, without name_repeat_col."""
+        return [c for c in range(self.first_day_col, self.last_day_col + 1) if c != self.name_repeat_col]
 
 
 ICU_LAYOUT = SheetLayout(
@@ -41,7 +42,8 @@ ICU_LAYOUT = SheetLayout(
     first_employee_row=3,
     first_day_col=8,
     last_day_col=36,
-    spacer_col=22,
+    name_repeat_col=22,
+    name_repeat_header="NAME",
 )
 
 
@@ -84,7 +86,7 @@ PAYCODES: dict[str, PayCode] = {
     # To check:
     # "PHNW", "RPH", "STUDY", "SD", "ORIENT",
 
-    # Ignore the following, not entered by ICU
+    # ignore, not entered by ICU
     # "LSL":    PayCode(id = 229, name = "LVE-Long Service Leave"), # has 'shortName: "LSL"' in the payload, not sure if needed?
     # "ML":     PayCode(id = 252, name = "LVE-Maternity Paid"), # has 'shortName: "MAT"'
     # "MLUP":   PayCode(id = 251, name = "LVE-Maternity Unpaid"), # has 'shortName: "MAU"'
