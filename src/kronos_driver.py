@@ -10,10 +10,11 @@ from datetime import date
 from pathlib import Path
 
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import NoSuchFrameException, TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as condition
 from selenium.webdriver.support.wait import WebDriverWait
@@ -24,6 +25,41 @@ from models import PayCode, PayCodeEntry, RosterEntry, Shift
 
 JS_FILE = Path(__file__).parent / "js" / "kronos.js"
 GRID_ID = "krnScheduleGrid_schedule_by_employee"
+TIMEOUT = 30  # seconds per page step
+
+# Unverified whether adding a shift sends a request; try 0
+SHIFT_ADD_DELAY = 0.6
+
+# True while the #loaderdiv spinner shows in any frame
+LOADER_VISIBLE_SCRIPT = """
+function allDocuments(win) {
+    let docs;
+    try { docs = [win.document]; } catch (e) { return []; }  // cross-origin frame
+    for (let i = 0; i < win.frames.length; i++) docs.push(...allDocuments(win.frames[i]));
+    return docs;
+}
+let root = window;
+try { window.top.document; root = window.top; } catch (e) {}
+
+return allDocuments(root).some(doc => {
+    const loader = doc.getElementById('loaderdiv');
+    if (!loader) return false;
+    const style = doc.defaultView.getComputedStyle(loader);
+    return style.display !== 'none' && style.visibility !== 'hidden' && loader.getClientRects().length > 0;
+});
+"""
+LOADER_APPEAR_TIMEOUT = 5.0  # max wait for a load to start
+LOADER_SETTLE_TIME = 1.0  # spinner must stay gone this long, loads can run back to back
+
+# True once the grid and its stores have loaded
+SCHEDULE_READY_SCRIPT = f"""
+if (typeof Ext === 'undefined') return false;
+const grid = Ext.getCmp('{GRID_ID}');
+if (!grid) return false;
+const resources = grid.getResourceStore();
+const events = grid.getEventStore ? grid.getEventStore() : grid.getStore();
+return !resources.isLoading() && !events.isLoading() && resources.getCount() > 0;
+"""
 
 # rosterTool.addPayCode returns a Promise; pass its outcome back to Selenium's async callback
 ADD_PAYCODE_SCRIPT = """
@@ -101,8 +137,7 @@ class KronosDriver:
 
     def __init__(self, use_proxy: bool = False, proxy_port: int = 8080):
         self.driver = _create_firefox(use_proxy, proxy_port)
-        self.wait = WebDriverWait(self.driver, 12)
-        self.driver.implicitly_wait(12)
+        self.wait = WebDriverWait(self.driver, TIMEOUT)
 
     def quit(self):
         self.driver.quit()
@@ -113,14 +148,13 @@ class KronosDriver:
         """Log in, open the ICU schedule for the date range and inject the helper JS."""
         self.login(user, password)
         self.select_hyperfind()
-        time.sleep(9)
         self.select_date_range(start_date, end_date)
-        time.sleep(6)
         self.switch_to_schedule_frame()
         self.inject_js()
 
     def get_employee_ids(self) -> dict[str, int]:
         """Kronos employee name -> employee id, for everyone in the loaded schedule."""
+        self._reinject_js()
         employees = self.driver.execute_script("return rosterTool.getEmployees();")
         return {e["1"]: e["Id"] for e in employees}
 
@@ -139,6 +173,7 @@ class KronosDriver:
                 try:
                     if isinstance(entry, Shift):
                         self.add_shift(employee_id, entry)
+                        time.sleep(SHIFT_ADD_DELAY)
                     elif self.add_paycode(employee_id, entry):
                         report.fell_back.append(entry)
                     report.added.append(entry)
@@ -146,9 +181,6 @@ class KronosDriver:
                 except KronosError as e:
                     report.failed.append((entry, str(e)))
                     print(f"FAILED {entry} for {employee_name}:{employee_id}: {e}")
-                time.sleep(0.6)
-
-            time.sleep(1.0)
 
         return report
 
@@ -182,33 +214,45 @@ class KronosDriver:
         self.driver.get(config.KRONOS_URL)
         self.driver.set_window_size(1920, 1048)
 
-        self.driver.find_element(By.ID, "userNameInput").click()
-        self.driver.find_element(By.ID, "userNameInput").send_keys(user)
-        self.driver.find_element(By.ID, "passwordInput").send_keys(password)
-        self.driver.find_element(By.ID, "submitButton").click()
+        self._find((By.ID, "userNameInput"), "login page").send_keys(user)
+        self._find((By.ID, "passwordInput"), "login page").send_keys(password)
+        submit_button = self._find((By.ID, "submitButton"), "login page")
+        submit_button.click()
+        # Scripts run mid-redirect can crash marionette
+        self.wait.until(condition.staleness_of(submit_button), "login page to submit")
+        self.wait.until(
+            lambda d: d.execute_script("return document.readyState === 'complete';"),
+            "home page to load after login",
+        )
+        self._wait_for_loader("home page to load after login")
 
     def select_hyperfind(self):
-        self.driver.find_element(By.XPATH, "//li[6]/div/div/span[2]").click()
-        self.driver.switch_to.frame(1)
-        time.sleep(6)  # stops page hang
-        self._js_click((By.ID, "hyperfindIcon"))
-        self._js_click((By.XPATH, "//section[2]/header/a/span"))
-        self._js_click((By.LINK_TEXT, config.HYPERFIND_NAME))
+        self._wait_and_click((By.XPATH, "//li[6]/div/div/span[2]"), "schedule menu item after login")
+        self._switch_to_frame_index(1)
+        # Clicking hyperfind mid-load leaves Kronos stuck on its spinner
+        self._wait_for_loader("first schedule load")
+        self._js_click((By.ID, "hyperfindIcon"), "hyperfind button")
+        self._js_click((By.XPATH, "//section[2]/header/a/span"), "hyperfind list")
+        link = self._js_click((By.LINK_TEXT, config.HYPERFIND_NAME), f"hyperfind {config.HYPERFIND_NAME!r}")
+        self.wait.until(condition.invisibility_of_element(link), "hyperfind list to close")
+        self._wait_for_loader("schedule to load the hyperfind")
 
     def select_date_range(self, start_date: date, end_date: date):
-        self._js_click((By.XPATH, "//div[2]/button/i"))
-        self.driver.find_element(By.XPATH, "//span/div/input").send_keys(start_date.strftime("%d%m%Y"))
-        self.driver.find_element(By.XPATH, "//span[2]/div/div/div/span/div/input").send_keys(end_date.strftime("%d%m%Y"))
-        self._wait_and_click((By.XPATH, "//button[2]/span"))
+        self._js_click((By.XPATH, "//div[2]/button/i"), "date range button")
+        self._find((By.XPATH, "//span/div/input"), "start date input").send_keys(start_date.strftime("%d%m%Y"))
+        self._find((By.XPATH, "//span[2]/div/div/div/span/div/input"), "end date input").send_keys(end_date.strftime("%d%m%Y"))
+        apply_button = self._wait_and_click((By.XPATH, "//button[2]/span"), "date range apply button")
+        self.wait.until(condition.invisibility_of_element(apply_button), "date range dialog to close")
+        self._wait_for_loader("schedule to load the date range")
 
-    def switch_to_schedule_frame(self, timeout: int = 20) -> bool:
-        """Switch into the iframe that holds the ExtJS schedule grid."""
+    def switch_to_schedule_frame(self, ext_timeout: int = 10):
+        """Switch into the schedule grid's iframe once the grid has loaded"""
         self.driver.switch_to.default_content()
 
-        iframes = self.driver.find_elements(By.CSS_SELECTOR, "iframe.krn-widget-iframe")
-        if not iframes:
-            print("No .krn-widget-iframe elements found")
-            return False
+        iframes = self.wait.until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, "iframe.krn-widget-iframe"),
+            "a .krn-widget-iframe to appear",
+        )
 
         for iframe in iframes:
             src = iframe.get_attribute("src") or ""
@@ -218,25 +262,18 @@ class KronosDriver:
             self.driver.switch_to.frame(iframe)
 
             try:
-                WebDriverWait(self.driver, timeout).until(
+                WebDriverWait(self.driver, ext_timeout).until(
                     lambda d: d.execute_script("return typeof window.Ext !== 'undefined';")
                 )
-            except Exception:
+            except TimeoutException:
                 print("ExtJS not found in this iframe")
                 self.driver.switch_to.default_content()
                 continue
 
-            try:
-                WebDriverWait(self.driver, timeout).until(
-                    lambda d: d.execute_script(f"return !!Ext.getCmp('{GRID_ID}');")
-                )
-                return True
-            except Exception:
-                print("Grid not found in this iframe")
-                self.driver.switch_to.default_content()
+            self._wait_for_schedule_loaded("schedule grid to load")
+            return
 
-        print("No matching schedule iframe found")
-        return False
+        raise KronosError("No schedule iframe with an ExtJS grid found")
 
     def inject_js(self):
         self.driver.execute_script(
@@ -251,9 +288,70 @@ class KronosDriver:
 
     # --- Helpers ---
 
-    def _wait_and_click(self, selector: tuple[str, str]):
-        self.wait.until(condition.element_to_be_clickable(selector)).click()
+    def _reinject_js(self):
+        """Re-inject the JS if Kronos reloaded the frame"""
+        try:
+            if self.driver.execute_script("return typeof window.rosterTool !== 'undefined';"):
+                return
+        except WebDriverException:
+            pass  # frame gone
+        print("Schedule frame was reloaded, injecting JS again")
+        self.switch_to_schedule_frame()
+        self.inject_js()
 
-    def _js_click(self, selector: tuple[str, str]):
-        element: WebElement = self.driver.find_element(*selector)
+    def _wait_for_loader(self, step: str):
+        """Wait for the spinner to appear, if it will, then stay gone"""
+        last_error: WebDriverException | None = None
+
+        def loader_visible() -> bool:
+            nonlocal last_error
+            try:
+                return bool(self.driver.execute_script(LOADER_VISIBLE_SCRIPT))
+            except WebDriverException as e:
+                last_error = e  # likely mid-navigation, so treat as loading
+                return True
+
+        appear_deadline = time.monotonic() + LOADER_APPEAR_TIMEOUT
+        while not loader_visible() and time.monotonic() < appear_deadline:
+            time.sleep(0.25)
+
+        deadline = time.monotonic() + TIMEOUT
+        gone_since: float | None = None
+        while True:
+            now = time.monotonic()
+            if loader_visible():
+                gone_since = None
+            elif gone_since is None:
+                gone_since = now
+            elif now - gone_since >= LOADER_SETTLE_TIME:
+                return
+            if now > deadline:
+                detail = f"last error: {last_error.msg}" if last_error else "loading spinner still showing"
+                raise TimeoutException(f"{step} ({detail} after {TIMEOUT}s)")
+            time.sleep(0.25)
+
+    def _wait_for_schedule_loaded(self, step: str):
+        self.wait.until(lambda d: d.execute_script(SCHEDULE_READY_SCRIPT), step)
+
+    def _switch_to_frame_index(self, index: int):
+        def switched(d: WebDriver) -> bool:
+            try:
+                d.switch_to.frame(index)
+                return True
+            except NoSuchFrameException:
+                return False
+
+        self.wait.until(switched, f"frame {index} to appear")
+
+    def _find(self, selector: tuple[str, str], step: str) -> WebElement:
+        return self.wait.until(condition.presence_of_element_located(selector), step)
+
+    def _wait_and_click(self, selector: tuple[str, str], step: str) -> WebElement:
+        element = self.wait.until(condition.element_to_be_clickable(selector), step)
+        element.click()
+        return element
+
+    def _js_click(self, selector: tuple[str, str], step: str) -> WebElement:
+        element = self._find(selector, step)
         self.driver.execute_script("arguments[0].click();", element)
+        return element
